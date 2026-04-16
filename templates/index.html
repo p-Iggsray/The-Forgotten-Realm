@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>The Forgotten Realm</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<!-- ── Start Screen ──────────────────────────────────── -->
+<div id="start-screen">
+
+    <!-- Animated background -->
+    <canvas id="menu-canvas"></canvas>
+
+    <!-- ① Main Menu -->
+    <div id="menu-main" class="menu-panel">
+        <div class="menu-title-block">
+            <div class="title-deco">&#10022; &#9876; &#10022;</div>
+            <h1 id="menu-title">The Forgotten Realm</h1>
+            <p class="menu-tagline">A Dark Fantasy · AI-Powered RPG</p>
+            <div class="title-rule"><span></span><span class="rule-gem">&#9670;</span><span></span></div>
+        </div>
+        <nav class="menu-nav">
+            <button class="menu-btn" id="btn-new-game">
+                <span class="btn-icon">&#9876;</span> New Game
+            </button>
+            <button class="menu-btn" id="btn-options">
+                <span class="btn-icon">&#9881;</span> Options
+            </button>
+            <button class="menu-btn" id="btn-how-to-play">
+                <span class="btn-icon">&#128214;</span> How to Play
+            </button>
+            <button class="menu-btn" id="btn-credits">
+                <span class="btn-icon">&#10022;</span> Credits
+            </button>
+        </nav>
+        <p class="menu-footer">Powered by Groq &middot; Llama 3.3 &middot; Flask</p>
+    </div>
+
+    <!-- ② Character Creation -->
+    <div id="menu-create" class="menu-panel hidden">
+        <div class="panel-header">
+            <button class="back-btn" id="btn-back-create">&#8592; Back</button>
+            <h2>Create Your Hero</h2>
+        </div>
+        <div class="create-rule"></div>
+
+        <div class="form-group">
+            <label for="char-name">Your Name</label>
+            <input type="text" id="char-name" placeholder="Enter your name..." maxlength="30" autocomplete="off">
+        </div>
+
+        <div class="form-group">
+            <label>Choose a Class</label>
+            <div class="class-grid">
+                <button class="class-card" data-class="Warrior">
+                    <div class="card-icon">&#9876;</div>
+                    <div class="card-name">Warrior</div>
+                    <div class="card-desc">Iron-willed fighter. Masters of blade and shield.</div>
+                </button>
+                <button class="class-card" data-class="Rogue">
+                    <div class="card-icon">&#128279;</div>
+                    <div class="card-name">Rogue</div>
+                    <div class="card-desc">Swift and cunning. Strikes from the shadows.</div>
+                </button>
+                <button class="class-card" data-class="Wizard">
+                    <div class="card-icon">&#10024;</div>
+                    <div class="card-name">Wizard</div>
+                    <div class="card-desc">Wielder of arcane forces. Power and fragility.</div>
+                </button>
+                <button class="class-card" data-class="Cleric">
+                    <div class="card-icon">&#9728;</div>
+                    <div class="card-name">Cleric</div>
+                    <div class="card-desc">Blessed by the Old Gods. Healer and protector.</div>
+                </button>
+            </div>
+        </div>
+
+        <p id="create-error" class="create-error hidden"></p>
+        <button id="begin-btn" class="primary-btn" disabled>&#9876; Enter the World</button>
+    </div>
+
+    <!-- ③ Options -->
+    <div id="menu-options" class="menu-panel hidden">
+        <div class="panel-header">
+            <button class="back-btn" id="btn-back-options">&#8592; Back</button>
+            <h2>Options</h2>
+        </div>
+        <div class="create-rule"></div>
+
+        <div class="opts-section">
+            <div class="opts-section-label">&#9834; Audio</div>
+            <div class="opts-row">
+                <label for="opt-vol">Music Volume</label>
+                <div class="opts-slider-wrap">
+                    <input type="range" id="opt-vol" class="opt-slider" min="0" max="100" value="50">
+                    <span id="opt-vol-pct" class="opts-pct">50%</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="opts-section">
+            <div class="opts-section-label">&#9716; Video</div>
+            <div class="opts-row opts-row-btn">
+                <label>Display Mode</label>
+                <button id="opt-fullscreen" class="opts-toggle">&#9974; Enter Fullscreen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ④ How to Play -->
+    <div id="menu-howto" class="menu-panel hidden">
+        <div class="panel-header">
+            <button class="back-btn" id="btn-back-howto">&#8592; Back</button>
+            <h2>How to Play</h2>
+        </div>
+        <div class="create-rule"></div>
+        <div class="howto-grid">
+            <div class="howto-row">
+                <div class="howto-key">W A S D<br><span>or &#8592;&#8593;&#8595;&#8594;</span></div>
+                <div class="howto-desc">Move your character through the world</div>
+            </div>
+            <div class="howto-row">
+                <div class="howto-key">E</div>
+                <div class="howto-desc">Interact — talk to NPCs, read signs, use stairs</div>
+            </div>
+            <div class="howto-row">
+                <div class="howto-key">Tab</div>
+                <div class="howto-desc">Open your inventory &amp; character sheet</div>
+            </div>
+            <div class="howto-row">
+                <div class="howto-key">Q</div>
+                <div class="howto-desc">Open the quest journal</div>
+            </div>
+            <div class="howto-row">
+                <div class="howto-key">Esc</div>
+                <div class="howto-desc">Close dialogue / sign, or open the pause menu</div>
+            </div>
+        </div>
+        <div class="howto-section-label">&#9876; In Battle</div>
+        <div class="howto-grid">
+            <div class="howto-row">
+                <div class="howto-key">W / S<br><span>or &#8593;&#8595;</span></div>
+                <div class="howto-desc">Navigate the battle menu (Fight / Item / Flee)</div>
+            </div>
+            <div class="howto-row">
+                <div class="howto-key">Space<br><span>or Enter</span></div>
+                <div class="howto-desc">Confirm selection — and strike during the timing bar</div>
+            </div>
+        </div>
+        <div class="howto-tip">
+            <span class="tip-label">&#9670; Tip</span>
+            Walk up to an NPC or sign and a <strong>!</strong> will appear above them.
+            In battle, hit <strong>Space</strong> when the cursor is over the green zone for a critical strike.
+        </div>
+    </div>
+
+    <!-- ④ Credits -->
+    <div id="menu-credits" class="menu-panel hidden">
+        <div class="panel-header">
+            <button class="back-btn" id="btn-back-credits">&#8592; Back</button>
+            <h2>Credits</h2>
+        </div>
+        <div class="create-rule"></div>
+        <div class="credits-block">
+            <div class="credits-section">
+                <p class="credits-role">Game Design &amp; Development</p>
+                <p class="credits-name">Parker Riggs</p>
+                <p class="credits-note">CS4880 — Assignment 10</p>
+            </div>
+            <div class="credits-divider">&#10022;</div>
+            <div class="credits-section">
+                <p class="credits-role">AI Narrative Engine</p>
+                <p class="credits-name">Llama 3.3 · 70B</p>
+                <p class="credits-note">via Groq Cloud Inference</p>
+            </div>
+            <div class="credits-divider">&#10022;</div>
+            <div class="credits-section">
+                <p class="credits-role">Text-to-Speech</p>
+                <p class="credits-name">Microsoft Edge TTS</p>
+                <p class="credits-note">ChristopherNeural voice</p>
+            </div>
+            <div class="credits-divider">&#10022;</div>
+            <div class="credits-section">
+                <p class="credits-role">Built With</p>
+                <p class="credits-name">Python · Flask · HTML5 Canvas</p>
+                <p class="credits-note">No game engine — custom from scratch</p>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- ── Game Screen ───────────────────────────────────── -->
+<div id="game-screen" class="hidden">
+
+    <!-- HUD bar -->
+    <div id="hud">
+        <div id="hud-left">
+            <span id="hud-name">Hero</span>
+            <span class="hud-sep">·</span>
+            <span id="hud-class">Warrior</span>
+            <span class="hud-sep">|</span>
+            <span id="hud-location">Eldoria Village</span>
+            <span class="hud-sep">|</span>
+            <span class="hud-hp-label">HP</span>
+            <div id="hp-bar"><div id="hp-fill"></div></div>
+            <span id="hp-text">50/50</span>
+        </div>
+        <div id="hud-center">
+            <span>WASD / &#8592;&#8593;&#8595;&#8594; Move</span>
+            <span class="hud-sep">·</span>
+            <span>E Interact</span>
+            <span class="hud-sep">·</span>
+            <span>Q Quests</span>
+            <span class="hud-sep">·</span>
+            <span>Tab Inventory</span>
+            <span class="hud-sep">·</span>
+            <span>Esc Pause</span>
+        </div>
+        <div id="hud-right">
+            <button id="inv-btn" class="hud-btn" onclick="toggleInventory()">&#128198; Inventory</button>
+            <button id="quest-btn" class="hud-btn">&#128220; Quests</button>
+            <button id="music-toggle" class="hud-btn active">&#127925;</button>
+            <button id="restart-btn" class="hud-btn">&#8635; New Game</button>
+        </div>
+    </div>
+
+    <!-- Main canvas -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Interaction hint bar -->
+    <div id="hint-bar"></div>
+
+    <!-- Sign / Note overlay -->
+    <div id="sign-box" class="overlay hidden">
+        <div class="sign-inner">
+            <pre id="sign-text"></pre>
+            <p class="overlay-close">[ Press E or Esc to close ]</p>
+        </div>
+    </div>
+
+    <!-- Quest Log overlay -->
+    <div id="quest-log" class="overlay hidden">
+        <div class="quest-log-inner">
+            <div class="quest-log-header">
+                <span>&#128220; Quest Journal</span>
+                <button id="close-quest-log" class="back-btn">&#10005; Close</button>
+            </div>
+            <div id="quest-list"></div>
+        </div>
+    </div>
+
+    <!-- Inventory / Character Screen -->
+    <div id="inventory-screen" class="overlay hidden">
+        <div id="inv-screen-inner">
+
+            <!-- Left panel: Character -->
+            <div id="inv-char-panel">
+                <div id="inv-char-header">
+                    <div id="inv-char-portrait"></div>
+                    <div id="inv-char-info">
+                        <div id="inv-char-name">Hero</div>
+                        <div id="inv-char-class">Warrior</div>
+                    </div>
+                    <div id="inv-level-badge">Lv 1</div>
+                </div>
+
+                <div class="inv-stat-block">
+                    <div class="inv-stat-row">
+                        <span class="inv-stat-label">HP</span>
+                        <div class="inv-mini-bar"><div id="inv-hp-fill"></div></div>
+                        <span id="inv-hp-val" class="inv-stat-val">50/50</span>
+                    </div>
+                    <div class="inv-stat-row">
+                        <span class="inv-stat-label" style="color:#c8d040">XP</span>
+                        <div class="inv-mini-bar"><div id="inv-xp-fill" style="background:linear-gradient(to right,#8a9020,#c8d040)"></div></div>
+                        <span id="inv-xp-val" class="inv-stat-val">0 / 60</span>
+                    </div>
+                </div>
+
+                <div class="inv-divider"></div>
+
+                <div id="inv-stats-grid">
+                    <div class="inv-stat-entry">
+                        <div class="inv-stat-icon">⚔</div>
+                        <div class="inv-stat-body">
+                            <div class="inv-stat-key">Attack</div>
+                            <div id="inv-atk-val" class="inv-stat-num">16</div>
+                        </div>
+                    </div>
+                    <div class="inv-stat-entry">
+                        <div class="inv-stat-icon">🛡</div>
+                        <div class="inv-stat-body">
+                            <div class="inv-stat-key">Defense</div>
+                            <div id="inv-def-val" class="inv-stat-num">5</div>
+                        </div>
+                    </div>
+                    <div class="inv-stat-entry">
+                        <div class="inv-stat-icon">💨</div>
+                        <div class="inv-stat-body">
+                            <div class="inv-stat-key">Speed</div>
+                            <div id="inv-spd-val" class="inv-stat-num">Normal</div>
+                        </div>
+                    </div>
+                    <div class="inv-stat-entry">
+                        <div class="inv-stat-icon">⭐</div>
+                        <div class="inv-stat-body">
+                            <div class="inv-stat-key">Next Level</div>
+                            <div id="inv-next-val" class="inv-stat-num">60 XP</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="inv-divider"></div>
+
+                <div id="inv-equipped-section">
+                    <div class="inv-section-label">EQUIPPED</div>
+                    <div id="inv-equipped-slot">
+                        <span id="inv-equipped-icon">—</span>
+                        <span id="inv-equipped-name">Nothing equipped</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right panel: Items -->
+            <div id="inv-items-panel">
+                <div id="inv-items-header">
+                    <span>INVENTORY</span>
+                    <button id="inv-close-btn" onclick="closeInventory()">&#x2715;</button>
+                </div>
+
+                <div id="inv-grid-wrap">
+                    <div id="inv-grid"></div>
+                </div>
+
+                <div id="inv-item-detail" class="hidden">
+                    <div id="inv-detail-icon"></div>
+                    <div id="inv-detail-body">
+                        <div id="inv-detail-name"></div>
+                        <div id="inv-detail-desc"></div>
+                    </div>
+                    <button id="inv-use-btn" onclick="useSelectedItem()">Use</button>
+                </div>
+                <div id="inv-empty-msg">Your pack is empty.</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Notifications -->
+    <div id="notifications"></div>
+
+    <!-- Pause Menu overlay -->
+    <div id="pause-menu" class="overlay hidden">
+        <div class="pause-backdrop"></div>
+        <div class="pause-card">
+            <div class="pause-title">⏸ PAUSED</div>
+            <div class="pause-vol-row">
+                <label for="pause-vol">♪ Music Volume</label>
+                <input type="range" id="pause-vol" min="0" max="100" value="50">
+            </div>
+            <button id="pause-resume" class="pause-btn primary">▶ Resume</button>
+            <button id="pause-fullscreen" class="pause-btn">⛶ Fullscreen</button>
+            <button id="pause-mainmenu" class="pause-btn">⌂ Main Menu</button>
+        </div>
+    </div>
+
+    <!-- NPC Dialogue overlay -->
+    <div id="dialogue-box" class="overlay hidden">
+        <div class="dlg-inner">
+            <div class="dlg-header">
+                <div id="dlg-portrait">&#128100;</div>
+                <span id="dlg-name">NPC</span>
+                <button class="dlg-close-btn" onclick="closeDialogue()">&#x2715;</button>
+            </div>
+            <div id="dlg-player-msg"></div>
+            <div id="dlg-text">...</div>
+            <div class="dlg-input-row">
+                <input type="text" id="dlg-input" placeholder="Say something…" maxlength="240" autocomplete="off">
+                <button id="dlg-send" onclick="sendDialogueMessage()">&#9658;</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Full-screen transition overlay (menu ↔ game) -->
+<div id="transition-overlay"></div>
+
+<!-- Intro cinematic overlay (shows on new game start) -->
+<div id="intro-overlay" class="hidden">
+    <p id="intro-text"></p>
+</div>
+
+<script>
+// ── Menu particle background ──────────────────────────
+const mc  = document.getElementById('menu-canvas');
+const mct = mc.getContext('2d');
+
+// Logical (CSS-pixel) menu canvas dimensions
+let mcW = 0, mcH = 0;
+
+function resizeMenuCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    mcW = window.innerWidth;
+    mcH = window.innerHeight;
+    // Physical pixel resolution
+    mc.width  = Math.round(mcW * dpr);
+    mc.height = Math.round(mcH * dpr);
+    // Keep CSS display size unchanged
+    mc.style.width  = mcW + 'px';
+    mc.style.height = mcH + 'px';
+    // Scale draw calls so we always work in logical coords
+    mct.setTransform(dpr, 0, 0, dpr, 0, 0);
+    mct.imageSmoothingEnabled = false;
+}
+resizeMenuCanvas();
+window.addEventListener('resize', resizeMenuCanvas);
+
+const EMBER_COUNT = 55;
+const embers = Array.from({ length: EMBER_COUNT }, () => spawnEmber(true));
+
+function spawnEmber(randomY) {
+    return {
+        x:    Math.random() * mcW,
+        y:    randomY ? Math.random() * mcH : mcH + 10,
+        vx:   (Math.random() - 0.5) * 0.4,
+        vy:   -(Math.random() * 0.6 + 0.25),
+        r:    Math.random() * 2.2 + 0.6,
+        maxA: Math.random() * 0.7 + 0.2,
+        life: 0,
+        max:  Math.random() * 320 + 180,
+        warm: Math.random() < 0.65,
+    };
+}
+
+function menuLoop() {
+    mct.clearRect(0, 0, mcW, mcH);
+
+    // Atmospheric fog blobs
+    const t = Date.now() / 1000;
+    const blobs = [
+        { x: mcW*0.2, y: mcH*0.6, r: mcW*0.35, c:'rgba(60,15,15,' },
+        { x: mcW*0.8, y: mcH*0.3, r: mcW*0.3,  c:'rgba(15,15,55,' },
+        { x: mcW*0.5, y: mcH*0.8, r: mcW*0.25, c:'rgba(40,10,10,' },
+    ];
+    for (const b of blobs) {
+        const a = 0.06 + 0.02 * Math.sin(t * 0.3 + b.x);
+        const g = mct.createRadialGradient(b.x, b.y, 0, b.x, b.y, b.r);
+        g.addColorStop(0,   b.c + a + ')');
+        g.addColorStop(1,   b.c + '0)');
+        mct.fillStyle = g;
+        mct.beginPath(); mct.arc(b.x, b.y, b.r, 0, Math.PI*2); mct.fill();
+    }
+
+    // Embers
+    for (const e of embers) {
+        e.x += e.vx; e.y += e.vy; e.life++;
+        if (e.life >= e.max || e.y < -10) Object.assign(e, spawnEmber(false), {life:0});
+        const fade = Math.min(1, Math.min(e.life / 40, (e.max - e.life) / 40));
+        mct.globalAlpha = e.maxA * fade;
+        mct.fillStyle = e.warm ? '#c8922a' : '#e8d090';
+        mct.beginPath(); mct.arc(e.x, e.y, e.r, 0, Math.PI*2); mct.fill();
+    }
+    mct.globalAlpha = 1;
+
+    if (!document.getElementById('start-screen').classList.contains('hidden')) {
+        requestAnimationFrame(menuLoop);
+    }
+}
+menuLoop();
+
+// ── Panel navigation ──────────────────────────────────
+function showPanel(id) {
+    const current = document.querySelector('.menu-panel:not(.hidden)');
+    const next    = document.getElementById(id);
+    if (!current || current === next) {
+        // Initial load — just show immediately
+        document.querySelectorAll('.menu-panel').forEach(p => { p.classList.add('hidden'); p.style.opacity='0'; p.style.transform=''; });
+        next.classList.remove('hidden');
+        requestAnimationFrame(() => { next.style.opacity='1'; next.style.transform='translateY(0)'; });
+        return;
+    }
+    // Fade + slide current panel out
+    current.style.opacity   = '0';
+    current.style.transform = 'translateY(-10px)';
+    setTimeout(() => {
+        document.querySelectorAll('.menu-panel').forEach(p => { p.classList.add('hidden'); p.style.opacity='0'; });
+        // Slide next in from slightly below
+        next.style.transform = 'translateY(12px)';
+        next.classList.remove('hidden');
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            next.style.opacity   = '1';
+            next.style.transform = 'translateY(0)';
+        }));
+    }, 200);
+}
+
+showPanel('menu-main');
+
+document.getElementById('btn-new-game').addEventListener('click',    () => showPanel('menu-create'));
+document.getElementById('btn-options').addEventListener('click',     () => showPanel('menu-options'));
+document.getElementById('btn-how-to-play').addEventListener('click', () => showPanel('menu-howto'));
+document.getElementById('btn-credits').addEventListener('click',     () => showPanel('menu-credits'));
+document.getElementById('btn-back-create').addEventListener('click', () => showPanel('menu-main'));
+document.getElementById('btn-back-options').addEventListener('click',() => showPanel('menu-main'));
+document.getElementById('btn-back-howto').addEventListener('click',  () => showPanel('menu-main'));
+document.getElementById('btn-back-credits').addEventListener('click',() => showPanel('menu-main'));
+
+// ── Options panel logic ───────────────────────────────
+// Shared volume preference (read by game.js on startMusic)
+window.gameVolumePct = 50;
+
+function syncVolSliders(pct) {
+    window.gameVolumePct = pct;
+    // Apply to live audio if game is running
+    if (typeof masterGain !== 'undefined' && masterGain) {
+        masterGain.gain.value = (pct / 100) * 0.25;
+    }
+    // Keep both sliders in sync
+    const optVol   = document.getElementById('opt-vol');
+    const pauseVol = document.getElementById('pause-vol');
+    if (optVol)   { optVol.value = pct;   optVol.style.setProperty('--pct', pct + '%'); }
+    if (pauseVol) { pauseVol.value = pct; pauseVol.style.setProperty('--pct', pct + '%'); }
+    const pctLabel = document.getElementById('opt-vol-pct');
+    if (pctLabel) pctLabel.textContent = pct + '%';
+}
+
+// Init slider fill on load
+(function() {
+    const s = document.getElementById('opt-vol');
+    s.style.setProperty('--pct', s.value + '%');
+})();
+
+document.getElementById('opt-vol').addEventListener('input', function() {
+    syncVolSliders(+this.value);
+});
+
+function updateOptFullscreenLabel() {
+    const btn = document.getElementById('opt-fullscreen');
+    if (btn) btn.textContent = document.fullscreenElement ? '\u2715 Exit Fullscreen' : '\u29fc Enter Fullscreen';
+}
+document.getElementById('opt-fullscreen').addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+        document.exitFullscreen().catch(() => {});
+    }
+});
+document.addEventListener('fullscreenchange', updateOptFullscreenLabel);
+
+// ── Character creation validation ────────────────────
+function validateCreate() {
+    const hasName  = document.getElementById('char-name').value.trim().length > 0;
+    const hasClass = !!document.querySelector('.class-card.selected');
+    const btn = document.getElementById('begin-btn');
+    btn.disabled = !(hasName && hasClass);
+}
+
+document.getElementById('char-name').addEventListener('input', () => {
+    document.getElementById('create-error').classList.add('hidden');
+    validateCreate();
+});
+
+// ── Class card selection ──────────────────────────────
+document.querySelectorAll('.class-card').forEach(card => {
+    card.addEventListener('click', () => {
+        document.querySelectorAll('.class-card').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        document.getElementById('create-error').classList.add('hidden');
+        validateCreate();
+    });
+});
+
+// ── Transition overlay ────────────────────────────────
+const _ov = document.getElementById('transition-overlay');
+function fadeOverlay(dir, cb) {
+    if (dir === 'in') {
+        _ov.style.transition = 'opacity 0.35s ease';
+        _ov.style.opacity = '1';
+        _ov.style.pointerEvents = 'all';
+        setTimeout(() => { if (cb) cb(); }, 360);
+    } else {
+        _ov.style.transition = 'opacity 0.5s ease';
+        _ov.style.opacity = '0';
+        _ov.style.pointerEvents = 'none';
+        setTimeout(() => { if (cb) cb(); }, 520);
+    }
+}
+
+// ── Menu Audio System ─────────────────────────────────
+let mACtx = null, mAMaster = null, mAMelody = null, mANodes = [];
+
+// A natural minor scale across two octaves (Hz)
+const MENU_SCALE = [
+    55, 61.74, 65.41, 73.42, 82.41, 87.31, 98,
+    110, 123.47, 130.81, 146.83, 164.81, 174.61, 196,
+    220, 246.94, 261.63, 293.66,
+];
+
+function initMenuAudio() {
+    if (mACtx) return;
+    mACtx = new (window.AudioContext || window['webkitAudioContext'])();
+    // Create SFX context here during the same user gesture so it's
+    // already "running" before any click fires
+    if (!sfxCtx || sfxCtx.state === 'closed') {
+        sfxCtx = new (window.AudioContext || window['webkitAudioContext'])();
+    }
+
+    // Wet chain: delay → LPF → feedback → master
+    mAMaster = mACtx.createGain();
+    mAMaster.gain.value = 0.32;
+    mAMaster.connect(mACtx.destination);
+
+    const delay = mACtx.createDelay(4);
+    delay.delayTime.value = 0.65;
+    const fb  = mACtx.createGain();   fb.gain.value  = 0.36;
+    const lpf = mACtx.createBiquadFilter();
+    lpf.type = 'lowpass'; lpf.frequency.value = 1100;
+    delay.connect(lpf); lpf.connect(fb); fb.connect(delay);
+    delay.connect(mAMaster);
+    mANodes.push(delay, fb, lpf);
+
+    // Ambience — pulled back so melody sits above it
+    _mDrone(55,    0.07, 'sine');
+    _mDrone(82.41, 0.04, 'sine');
+    _mDrone(110,   0.02, 'triangle');
+
+    // Wind texture (quieter, background only)
+    _mWind();
+
+    // Dedicated melody gain — runs loud, separate from the wet/dry chain
+    const melGain = mACtx.createGain();
+    melGain.gain.value = 1.0;
+    melGain.connect(mAMaster);
+
+    // Opening chord — immediately audible
+    _mChord([MENU_SCALE[0], MENU_SCALE[4], MENU_SCALE[7]], delay, melGain);
+
+    // Melody: every 2–3 s, loud chorus notes
+    mAMelody = setInterval(() => {
+        if (!mACtx || mACtx.state === 'closed') return;
+        const burst = Math.random() < 0.4 ? 2 : 1;
+        const pool  = MENU_SCALE.slice(4, 14);
+        for (let i = 0; i < burst; i++) {
+            const freq = pool[Math.floor(Math.random() * pool.length)];
+            _mNote(freq, delay, melGain, 0.50, 5.5);
+        }
+    }, 2000 + Math.random() * 1400);
+}
+
+function _mDrone(freq, vol, type) {
+    const o = mACtx.createOscillator(), g = mACtx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = vol;
+    o.connect(g); g.connect(mAMaster); o.start();
+    mANodes.push(o, g);
+}
+
+function _mWind() {
+    const len = mACtx.sampleRate * 3;
+    const buf = mACtx.createBuffer(1, len, mACtx.sampleRate);
+    const d   = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = mACtx.createBufferSource();
+    src.buffer = buf; src.loop = true;
+    const flt = mACtx.createBiquadFilter();
+    flt.type = 'bandpass'; flt.frequency.value = 280; flt.Q.value = 0.35;
+    const wg  = mACtx.createGain(); wg.gain.value = 0.032;
+    const lfo = mACtx.createOscillator(), lfog = mACtx.createGain();
+    lfo.frequency.value = 0.055; lfog.gain.value = 0.014;
+    lfo.connect(lfog); lfog.connect(wg.gain);
+    lfo.start(); src.connect(flt); flt.connect(wg); wg.connect(mAMaster); src.start();
+    mANodes.push(src, flt, wg, lfo, lfog);
+}
+
+// Each melody note plays TWO detuned oscillators (chorus) + tremolo LFO
+function _mNote(freq, wet, dry, vol, dur) {
+    const now = mACtx.currentTime;
+
+    // Envelope
+    const env = mACtx.createGain();
+    env.gain.setValueAtTime(0, now);
+    env.gain.linearRampToValueAtTime(vol, now + 0.12);
+    env.gain.setValueAtTime(vol, now + dur * 0.45);
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    // Tremolo (slow volume shimmer ~5Hz)
+    const trem = mACtx.createOscillator(), tremG = mACtx.createGain();
+    trem.frequency.value = 4.8; tremG.gain.value = vol * 0.18;
+    trem.connect(tremG); tremG.connect(env.gain);
+    trem.start(now); trem.stop(now + dur + 0.1);
+
+    // Main oscillator — triangle for warmth
+    const o1 = mACtx.createOscillator();
+    o1.type = 'triangle'; o1.frequency.value = freq;
+    o1.connect(env);
+
+    // Chorus twin — slightly sharp (~6 cents)
+    const o2 = mACtx.createOscillator();
+    o2.type = 'triangle'; o2.frequency.value = freq * 1.0035;
+    const choG = mACtx.createGain(); choG.gain.value = 0.55;
+    o2.connect(choG); choG.connect(env);
+
+    env.connect(wet);   // send to reverb delay
+    env.connect(dry);   // send direct to melody gain
+
+    o1.start(now); o1.stop(now + dur + 0.1);
+    o2.start(now); o2.stop(now + dur + 0.1);
+}
+
+function _mChord(freqs, wet, dry) {
+    freqs.forEach(f => _mNote(f, wet, dry, 0.42, 7));
+}
+
+function stopMenuAudio() {
+    clearInterval(mAMelody); mAMelody = null;
+    mANodes.forEach(n => { try { n.stop ? n.stop() : n.disconnect(); } catch(e) {} });
+    mANodes = [];
+    if (mACtx) { mACtx.close(); mACtx = null; }
+    mAMaster = null;
+}
+
+// SFX run in their own AudioContext (created alongside mACtx on first hover)
+// so the music's compressor never affects their volume
+let sfxCtx = null;
+function _sfx() {
+    // Fallback: if somehow called before initMenuAudio, create on the spot
+    if (!sfxCtx || sfxCtx.state === 'closed') {
+        sfxCtx = new (window.AudioContext || window['webkitAudioContext'])();
+    }
+    return sfxCtx;
+}
+
+// Hover sound — soft rising shimmer
+function playHover() {
+    const ctx = _sfx();
+    const t = ctx.currentTime + 0.005; // small lookahead — never schedule in the past
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(520, t);
+    o.frequency.linearRampToValueAtTime(820, t + 0.07);
+    g.gain.setValueAtTime(0.22, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + 0.15);
+}
+
+// Click sound — heavy medieval thud + metallic tick
+function playClick() {
+    const ctx = _sfx();
+    const t = ctx.currentTime + 0.005;
+    // Thud
+    const o1 = ctx.createOscillator(), g1 = ctx.createGain();
+    o1.type = 'sine';
+    o1.frequency.setValueAtTime(200, t);
+    o1.frequency.exponentialRampToValueAtTime(55, t + 0.18);
+    g1.gain.setValueAtTime(0.45, t);
+    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+    o1.connect(g1); g1.connect(ctx.destination);
+    o1.start(t); o1.stop(t + 0.23);
+    // Tick
+    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
+    o2.type = 'square'; o2.frequency.value = 1400;
+    g2.gain.setValueAtTime(0.06, t);
+    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+    o2.connect(g2); g2.connect(ctx.destination);
+    o2.start(t); o2.stop(t + 0.04);
+}
+
+// Start music on the very first user gesture anywhere on the page
+// (browsers block AudioContext until interaction, but this fires on first click/touch/key)
+function _bootAudio() {
+    initMenuAudio();
+    document.removeEventListener('pointerdown', _bootAudio);
+    document.removeEventListener('touchstart',  _bootAudio);
+    document.removeEventListener('keydown',     _bootAudio);
+}
+document.addEventListener('pointerdown', _bootAudio);
+document.addEventListener('touchstart',  _bootAudio, { passive: true });
+document.addEventListener('keydown',     _bootAudio);
+
+// Attach hover/click SFX only to start-screen elements (not in-game buttons that share classes)
+document.querySelectorAll('#start-screen .menu-btn, #start-screen .back-btn, #start-screen .primary-btn, #start-screen .class-card').forEach(el => {
+    el.addEventListener('mouseenter', () => { initMenuAudio(); playHover(); });
+    el.addEventListener('click',      () => { initMenuAudio(); playClick(); });
+});
+
+// Stop menu audio and show transition overlay when entering the game
+document.getElementById('begin-btn').addEventListener('click', () => {
+    stopMenuAudio();
+    fadeOverlay('in');
+});
+</script>
+<script src="/static/game.js"></script>
+<script src="/static/tile-renderer.js"></script>
+<script src="/static/TILE_MANIFEST.js"></script>
+<script src="/static/SpriteRenderer.js"></script>
+<script src="/static/visual-quality.js"></script>
+</body>
+</html>
