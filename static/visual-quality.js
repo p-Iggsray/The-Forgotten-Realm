@@ -71,9 +71,9 @@ const VQ = (() => {
     let _AO_CAST, _AO_RECV;
     function _sets() {
         if (_AO_CAST) return;
-        _AO_CAST = new Set([TILE.WALL, TILE.TREE]);
+        _AO_CAST = new Set([TILE.BUILDING_WALL, TILE.TREE]);
         _AO_RECV = new Set([
-            TILE.FLOOR, TILE.GRASS, TILE.PATH, TILE.WATER,
+            TILE.BUILDING_FLOOR, TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.WATER,
             TILE.DOOR, TILE.SIGN, TILE.STAIRS, TILE.STAIRSUP,
         ]);
     }
@@ -146,7 +146,7 @@ const VQ = (() => {
                 // The existing code already blends FROM the GRASS side.
                 // Here we add the matching blend from PATH facing GRASS/TREE,
                 // plus diagonal corner fills to remove bare notch artifacts.
-                if (tile === TILE.PATH) {
+                if (tile === TILE.DIRT_PATH || tile === TILE.STONE_PATH) {
                     const dirs = [
                         [tx, ty - 1, 0],  // N edge of this tile
                         [tx, ty + 1, 1],  // S edge
@@ -189,8 +189,8 @@ const VQ = (() => {
                     ];
                     for (const [ntx, nty, dir] of dirs) {
                         const nt = currentMap.tiles[nty]?.[ntx];
-                        if (nt !== TILE.GRASS && nt !== TILE.TREE && nt !== TILE.PATH) continue;
-                        const edgeCol = nt === TILE.PATH ? P.M_CLAY : P.M_FOREST;
+                        if (nt !== TILE.GRASS && nt !== TILE.TREE && nt !== TILE.DIRT_PATH && nt !== TILE.STONE_PATH) continue;
+                        const edgeCol = (nt === TILE.DIRT_PATH || nt === TILE.STONE_PATH) ? P.M_CLAY : P.M_FOREST;
                         if (dir === 0) dither2(bgc, px, py,          T,  bw, P.M_TEAL, edgeCol, 1);
                         if (dir === 1) dither2(bgc, px, py + T - bw, T,  bw, P.M_TEAL, edgeCol, 0);
                         if (dir === 2) dither2(bgc, px, py,          bw, T,  P.M_TEAL, edgeCol, 1);
