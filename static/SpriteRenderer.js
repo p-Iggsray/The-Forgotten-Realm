@@ -362,9 +362,13 @@ class SpriteRenderer {
                 break;
         }
 
-        // ── Debug overlay ─────────────────────────────────────────
-        // When DEBUG_TILES is true, flag every tile that missed the sprite path
-        // (atlas entry missing, image failed to load, or region was transparent).
+        // ── Procedural fallback ───────────────────────────────────
+        // Atlas entry missing, image not yet loaded, or source region was
+        // transparent.  Delegate to the _tc cache built by game.js so the
+        // tile always renders something without needing a sprite sheet.
+        this._drawProcedural(ctx, tileId, ipx, ipy, tx, ty, mapCtx, ts);
+
+        // ── Debug overlay (on top of procedural) ──────────────────
         if (DEBUG_TILES) {
             ctx.save();
             ctx.fillStyle   = 'rgba(255,0,0,0.30)';
@@ -377,9 +381,6 @@ class SpriteRenderer {
             ctx.fillText(String(tileId), ipx + 2, ipy + 11);
             ctx.restore();
         }
-        // Tile drew nothing — intentionally leave blank.
-        // Procedural fallback is permanently disabled: the atlas is the only
-        // source of tile graphics. Enable DEBUG_TILES above to find missing IDs.
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -514,9 +515,10 @@ class SpriteRenderer {
 
             const atlasEntry = this._atlasById.get(id);
             if (!atlasEntry) {
-                throw new Error(
-                    `[SpriteRenderer] Missing atlas entry: "${id}" (tile: ${manifestKey})`
-                );
+                // Atlas entry missing — cache null so we don't re-throw every frame,
+                // then fall through to the procedural renderer.
+                this._tileCache.set(cacheKey, null);
+                return null;
             }
             const rect = {
                 sx: atlasEntry.sx, sy: atlasEntry.sy,
@@ -561,9 +563,9 @@ class SpriteRenderer {
 
             const atlasEntry = this._atlasById.get(def.animId);
             if (!atlasEntry) {
-                throw new Error(
-                    `[SpriteRenderer] Missing atlas entry: "${def.animId}" (tile: ${manifestKey})`
-                );
+                // animId missing — cache null, fall through to procedural renderer.
+                this._tileCache.set(cacheKey, null);
+                return null;
             }
             // Frame N is at sx + N * sw in a horizontal strip
             const fi   = Math.min(frameIdx, atlasEntry.frames - 1);

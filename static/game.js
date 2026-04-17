@@ -1480,6 +1480,17 @@ function _buildTileCache() {
     const T = TS, U = Math.max(1, Math.floor(T / 16));
     const P = PALETTE; // shorthand
 
+    // ── tile-renderer.js helpers — available at runtime (loaded after game.js) ──
+    // _ditherBayer and _ellipse are defined in tile-renderer.js.  Provide
+    // graceful fallbacks so _buildTileCache still works if that file is absent.
+    const _db = typeof _ditherBayer === 'function' ? _ditherBayer
+        : (c, x, y, w, h, ca, cb, d) => dither2(c, x, y, w, h, ca, cb, 0);
+    const _el = typeof _ellipse === 'function' ? _ellipse
+        : (c, cx, cy, rx, ry, col) => {
+            c.fillStyle = col;
+            c.beginPath(); c.arc(cx, cy, Math.max(rx, ry), 0, Math.PI * 2); c.fill();
+        };
+
     // ─────────────────────────────────────────────────────
     // GRASS — 8 pixel-art variants, no blur, palette only
     // Type A (v0-2,7): solid base + scattered 1px dew + L-blades
@@ -1498,11 +1509,11 @@ function _buildTileCache() {
 
         // ── Type B / C: dithered secondary patch ─────────
         if (v === 3 || v === 4) {
-            // Type B — dither dark/mid green in irregular patches
-            for (let i = 0; i < 6; i++) {
+            // Type B — Bayer-ordered dither for smoother organic dark patches
+            for (let i = 0; i < 5; i++) {
                 const px2 = Math.floor(rng()*(T-U*6)), py2 = Math.floor(rng()*(T-U*6));
-                const pw = Math.floor(rng()*U*8+U*3),  ph = Math.floor(rng()*U*6+U*2);
-                dither2(c, px2, py2, Math.min(pw,T-px2), Math.min(ph,T-py2), P.D_GREEN, P.M_FOREST, v);
+                const pw = Math.floor(rng()*U*10+U*3), ph = Math.floor(rng()*U*8+U*2);
+                _db(c, px2, py2, Math.min(pw,T-px2), Math.min(ph,T-py2), P.M_FOREST, P.D_GREEN, 0.45);
             }
         } else if (v === 5) {
             // Type C — dither mid/sand across full tile
@@ -1523,13 +1534,19 @@ function _buildTileCache() {
         for (let i = 0; i < hiCount; i++)
             c.fillRect(Math.floor(rng()*(T-U*2)+U), Math.floor(rng()*(T-U*2)+U), 1, 1);
 
-        // ── L-shaped grass blades (2-px) ─────────────────
+        // ── L-shaped grass blades with shaded tips ───────
         const bladeCol = isDry ? P.M_CLAY : isDark ? P.D_GREEN : P.M_FOREST;
-        c.fillStyle = bladeCol;
-        for (let i = 0; i < 4; i++) {
+        const bladeTip = isDry ? P.L_STONE : isDark ? P.M_MOSS : P.L_LEAF;
+        for (let i = 0; i < 6; i++) {
             const bx2 = Math.floor(rng()*(T-U*4)+U), by2 = Math.floor(rng()*(T-U*5)+U);
-            c.fillRect(bx2, by2, 1, U*2);        // vertical stroke
-            c.fillRect(bx2+1, by2, 1, 1);        // horizontal foot (L shape)
+            c.fillStyle = bladeCol; c.fillRect(bx2, by2+1, 1, U*2);  // stem
+            c.fillStyle = bladeTip; c.fillRect(bx2, by2,   1, 1);     // bright tip
+            if (i % 2 === 0) { c.fillStyle = bladeCol; c.fillRect(bx2+1, by2, 1, 1); } // L foot
+        }
+        // ── Ground-depth shadow — Bayer fringe at lower 38% ─
+        // Darkens the bottom of each tile to suggest ground shadow depth.
+        if (!isDry) {
+            _db(c, 0, Math.floor(T*0.62), T, Math.floor(T*0.38), base1, P.D_GREEN, 0.28);
         }
         // ── Per-variant pixel-art detail ─────────────────
         switch (v) {
@@ -1624,15 +1641,32 @@ function _buildTileCache() {
             const sw = half-gap*2, sh = half-gap*2;
             // Flat fill
             c.fillStyle = sc; c.fillRect(ox, oy, sw, sh);
-            // Bevel: bright top + left edges
+            // Worn center — subtle Bayer-dithered lighter highlight in center ~50%
+            // of each cobblestone face, simulating sun-bleached high-traffic wear.
+            if (sw > 4 && sh > 4) {
+                _db(c, ox+Math.floor(sw*0.25), oy+Math.floor(sh*0.25),
+                    Math.floor(sw*0.50), Math.floor(sh*0.50), sc, P.L_STONE, 0.20);
+            }
+            // Bevel: 2px bright top + left edges
             c.fillStyle = P.L_WHITE;
-            c.fillRect(ox, oy, sw, 1);         // top highlight
-            c.fillRect(ox, oy, 1, sh);         // left highlight
-            // Bevel: dark bottom + right edges
+            c.fillRect(ox, oy, sw, 1);         // top highlight (outer)
+            c.fillRect(ox, oy, 1, sh);         // left highlight (outer)
+            c.fillStyle = P.L_STONE;
+            c.fillRect(ox, oy+1, sw, 1);       // top highlight (inner)
+            c.fillRect(ox+1, oy, 1, sh);       // left highlight (inner)
+            // Bevel: 2px dark bottom + right edges
             c.fillStyle = P.D_STONE;
-            c.fillRect(ox, oy+sh-1, sw, 1);   // bottom shadow
-            c.fillRect(ox+sw-1, oy, 1, sh);   // right shadow
+            c.fillRect(ox,      oy+sh-1, sw, 1);  // bottom shadow (outer)
+            c.fillRect(ox+sw-1, oy,      1, sh);  // right shadow (outer)
+            c.fillStyle = P.D_BROWN;
+            c.fillRect(ox,      oy+sh-2, sw, 1);  // bottom shadow (inner)
+            c.fillRect(ox+sw-2, oy,      1, sh);  // right shadow (inner)
         });
+        // Edge darkening — cast shadow from tiles to the south and east.
+        // Makes the path read as a flat surface with depth at tile boundaries.
+        c.fillStyle = P.D_BROWN;
+        c.fillRect(0, T-Math.max(1,gap), T, Math.max(1,gap)); // south edge
+        c.fillRect(T-Math.max(1,gap), 0, Math.max(1,gap), T); // east edge
         if (v === 1 || v === 3) { // hairline cracks — 2-3 diagonal 1px dots
             c.fillStyle = P.D_BROWN;
             for (let i = 0; i < 4; i++) c.fillRect(gap+2+i, gap+2+i, 1, 1);
@@ -1790,29 +1824,31 @@ function _buildTileCache() {
         // Trunk (3-color flat strips: D_BROWN base, M_CLAY center highlight)
         c.fillStyle = P.D_BROWN; c.fillRect(Math.floor(T/2-tW/2), Math.floor(T*.44), tW, tH);
         c.fillStyle = P.M_CLAY;  c.fillRect(Math.floor(T/2-tW/2+Math.floor(tW*.25)), Math.floor(T*.44), Math.floor(tW*.40), tH);
-        // Canopy layers (3 concentric arcs, each inset and shifted)
-        c.fillStyle = P.D_GREEN;
-        c.beginPath(); c.arc(cx2, cy2, r, 0, Math.PI*2); c.fill();
-        c.fillStyle = P.M_FOREST;
-        c.beginPath(); c.arc(cx2, cy2-Math.floor(r*.06), Math.floor(r*.84), 0, Math.PI*2); c.fill();
-        c.fillStyle = P.M_MOSS;
-        c.beginPath(); c.arc(cx2-Math.floor(r*.18), cy2-Math.floor(r*.20), Math.floor(r*.62), 0, Math.PI*2); c.fill();
-        // Bright specular patch upper-left + 2px highlight pixel
+        // Canopy layers — pixel-art ellipses (no anti-aliasing), squashed vertically for depth
+        const ry = Math.floor(r * 0.82); // slight vertical squash
+        // Outer shadow ring (D_GREEN darkest, full radius)
+        _el(c, cx2, cy2, Math.floor(r), ry, P.D_GREEN);
+        // Main canopy body (M_FOREST, inset 10%)
+        _el(c, cx2, cy2 - Math.floor(r*.06), Math.floor(r*.86), Math.floor(ry*.84), P.M_FOREST);
+        // Inner highlight mass (M_MOSS, upper-left offset)
+        _el(c, cx2 - Math.floor(r*.16), cy2 - Math.floor(r*.18), Math.floor(r*.62), Math.floor(ry*.58), P.M_MOSS);
+        // Bright specular patch upper-left (L_LEAF rectangle, crisp pixel-art)
         c.fillStyle = P.L_LEAF;
-        c.fillRect(Math.floor(cx2-r*.38), Math.floor(cy2-r*.44), Math.floor(r*.28), Math.floor(r*.20));
+        c.fillRect(Math.floor(cx2 - r*.36), Math.floor(cy2 - r*.40), Math.floor(r*.30), Math.floor(r*.22));
+        // 2px specular glint (L_WHITE)
         c.fillStyle = P.L_WHITE;
-        c.fillRect(Math.floor(cx2-r*.32), Math.floor(cy2-r*.40), 2, 2);
-        if (cfg.dense) { // extra perimeter bump clusters
-            c.fillStyle = P.D_GREEN;
-            for (let i=0;i<5;i++) {
-                const a=(i/5)*Math.PI*2;
-                c.beginPath(); c.arc(cx2+Math.cos(a)*r*.65,cy2+Math.sin(a)*r*.5,r*.22,0,Math.PI*2); c.fill();
+        c.fillRect(Math.floor(cx2 - r*.30), Math.floor(cy2 - r*.36), 2, 2);
+        if (cfg.dense) { // extra perimeter bump clusters — pixel-art ellipses
+            for (let i = 0; i < 5; i++) {
+                const a = (i / 5) * Math.PI * 2;
+                const bx3 = Math.round(cx2 + Math.cos(a) * r * .65);
+                const by3 = Math.round(cy2 + Math.sin(a) * r * .44);
+                _el(c, bx3, by3, Math.floor(r*.23), Math.floor(r*.18), P.D_GREEN);
             }
         }
-        if (cfg.wide) { // lateral side lobes
-            c.fillStyle = P.M_FOREST;
-            c.beginPath(); c.arc(cx2-Math.floor(r*.55),cy2+Math.floor(r*.12),r*.28,0,Math.PI*2); c.fill();
-            c.beginPath(); c.arc(cx2+Math.floor(r*.55),cy2+Math.floor(r*.12),r*.28,0,Math.PI*2); c.fill();
+        if (cfg.wide) { // lateral side lobes — pixel-art ellipses
+            _el(c, cx2 - Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.M_FOREST);
+            _el(c, cx2 + Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.M_FOREST);
         }
         _tc[`tr${v}`] = can;
     }
@@ -1833,30 +1869,73 @@ function _buildTileCache() {
         _tc[`ceil${v}`] = can;
     }
 
-    // ── WATER  8 animation frames (flipbook @ ~12fps ≈ 83ms/frame) ─
+    // ── WATER  8 animation frames (flipbook @ 4fps = 250ms/frame) ──
+    // Three depth zones via Bayer dithering:
+    //   Surface  0–35%:  M_TEAL  / L_WATER  caustic shimmer
+    //   Mid     35–65%:  M_TEAL  / M_SLATE  (Bayer 50%)
+    //   Deep    65–100%: M_SLATE / D_BLUE   (Bayer 28%)
+    // Per frame: primary highlight line shifts ±2px; ripple ellipses
+    // grow/fade in two independent off-center pools.
     for (let f = 0; f < 8; f++) {
         const can = _mkTile(), c = can.getContext('2d');
-        // Solid base — no dither, no per-pixel loops
-        c.fillStyle = P.M_SLATE; c.fillRect(0, 0, T, T);
-        // Darker lower third for depth illusion (two solid rects, zero GC)
-        c.fillStyle = P.M_TEAL;
-        c.fillRect(0, Math.floor(T * 0.62), T, Math.floor(T * 0.38));
-        // Shimmer band drifts upward — 1 rect
-        const bandY = (Math.floor(T * 0.32) + f * Math.floor(T * 0.025)) % T;
+        c.imageSmoothingEnabled = false;
+
+        // ── 1. Deep bottom ──────────────────────────────
+        c.fillStyle = P.D_BLUE; c.fillRect(0, 0, T, T);
+        // Mid depth: Bayer blend M_SLATE into deep zone
+        _db(c, 0, Math.floor(T*0.40), T, Math.floor(T*0.30), P.M_SLATE, P.D_BLUE,  0.55);
+        // Surface zone: solid M_TEAL over upper portion
+        c.fillStyle = P.M_TEAL; c.fillRect(0, 0, T, Math.floor(T*0.40));
+        // Bayer transition surface → mid
+        _db(c, 0, Math.floor(T*0.33), T, Math.floor(T*0.14), P.M_TEAL, P.M_SLATE, 0.50);
+
+        // ── 2. Caustic shimmer at surface ───────────────
+        _db(c, 0, 0, T, Math.floor(T*0.32), P.M_TEAL, P.L_WATER, 0.11);
+
+        // ── 3. Drifting primary highlight line ──────────
+        // Moves up by 1px per frame then wraps at top of tile
+        const hlY = Math.floor(T*0.22) - (f & 3) * Math.floor(T*0.025);
         c.fillStyle = P.L_WATER;
-        c.fillRect(0, bandY, T, Math.floor(T * 0.20));
-        // 3 wave stripes — narrow, offset, alternating lightness
-        for (let i = 0; i < 3; i++) {
-            const wy = (Math.floor(T * 0.12 + i * (T / 3.4)) + f) % T;
-            c.fillStyle = (i + Math.floor(f / 2)) % 2 === 0 ? P.L_WATER : P.L_BLUE;
-            c.fillRect(Math.floor(T * 0.05), wy, Math.floor(T * 0.88), Math.max(1, Math.floor(T * 0.05)));
+        c.fillRect(Math.floor(T*0.08), hlY, Math.floor(T*0.55), 1);
+        c.fillStyle = P.L_WHITE;
+        c.fillRect(Math.floor(T*0.26), hlY, Math.floor(T*0.20), 1); // bright center
+
+        // ── 4. Secondary highlight (inverted phase) ─────
+        const hlY2 = Math.floor(T*0.62) + (f & 3) * Math.floor(T*0.02);
+        c.fillStyle = P.L_BLUE;
+        c.fillRect(Math.floor(T*0.45), hlY2, Math.floor(T*0.34), 1);
+
+        // ── 5. Ripple A — left-center pool ──────────────
+        // Grows over frames 1-4 then collapses; ellipse squashed ~50% vertically
+        const rAphase = f & 3;  // 0-3 within each half-cycle
+        if (rAphase > 0) {
+            const rAr   = [0, 2, 4, 3][rAphase];
+            const rAalp = [0, 0.85, 0.65, 0.30][rAphase];
+            c.globalAlpha = rAalp;
+            _el(c, Math.floor(T*0.30), Math.floor(T*0.55), rAr, Math.max(1, Math.ceil(rAr*0.55)), P.L_WATER);
+            c.globalAlpha = 1;
         }
-        // Specular glint — every 4 frames, alternate position
+
+        // ── 6. Ripple B — right-center pool (offset 4 frames) ─
+        const rBphase = (f + 4) & 7;
+        if (rBphase >= 1 && rBphase <= 3) {
+            const rBr   = [0, 2, 3, 2][rBphase > 3 ? 0 : rBphase];
+            const rBalp = [0, 0.75, 0.55, 0.25][rBphase > 3 ? 0 : rBphase];
+            if (rBr > 0) {
+                c.globalAlpha = rBalp;
+                _el(c, Math.floor(T*0.66), Math.floor(T*0.38), rBr, Math.max(1, Math.ceil(rBr*0.5)), P.L_WATER);
+                c.globalAlpha = 1;
+            }
+        }
+
+        // ── 7. Specular glint (every 4 frames) ──────────
         if ((f & 3) === 0) {
             c.fillStyle = P.L_WHITE;
-            c.fillRect(f === 0 ? Math.floor(T * 0.14) : Math.floor(T * 0.54), Math.floor(T * 0.18), 2, 1);
-            c.fillRect(Math.floor(T * 0.42), Math.floor(T * 0.43), 1, 1);
+            const gx = f === 0 ? Math.floor(T*0.14) : Math.floor(T*0.54);
+            c.fillRect(gx, Math.floor(T*0.17), 2, 1);
+            c.fillRect(Math.floor(T*0.42), Math.floor(T*0.42), 1, 1);
         }
+
         _tc[`wa${f}`] = can;
     }
 

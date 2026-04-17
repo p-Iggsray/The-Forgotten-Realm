@@ -378,6 +378,10 @@ function _drawRefPath(c, T, v) {
         _ditherBayer(c, ox, oy, Math.floor(sw*0.55), Math.floor(sh*0.55),
             sc, P.L_WHITE, 0.22);
 
+        // Worn center highlight — lighter center 40% of face (foot traffic)
+        _ditherBayer(c, ox + Math.floor(sw*0.25), oy + Math.floor(sh*0.25),
+            Math.floor(sw*0.50), Math.floor(sh*0.50), sc, P.L_STONE, 0.20);
+
         // 2px bevel: bright top + left edges
         c.fillStyle = P.L_WHITE;
         c.fillRect(ox,    oy,    sw, 1);   // top
@@ -420,6 +424,12 @@ function _drawRefPath(c, T, v) {
     c.fillRect(half - gap, half - gap, gap*2, gap*2);
     c.fillStyle = P.D_VOID;
     c.fillRect(half - 1, half - 1, 1, 1);  // center void pixel
+
+    // ── South + east edge darkening (recessed shadow under/right of tile) ──
+    const edgeSz = Math.max(1, gap);
+    c.fillStyle = P.D_BROWN;
+    c.fillRect(0, T - edgeSz, T, edgeSz);  // south edge
+    c.fillRect(T - edgeSz, 0, edgeSz, T);  // east edge
 }
 
 
