@@ -118,16 +118,7 @@ const TILE_MANIFEST = {
     //  8 variants picked by (tx*7 + ty*13) & 7
     // ─────────────────────────────────────────────────────────────
     GRASS: {
-        ids: [
-            'grass_center',       // 0
-            'grass_center',       // 1 (duplicate for density)
-            'grass_top',          // 2
-            'grass_bottom',       // 3
-            'grass_left',         // 4
-            'grass_right',        // 5
-            'grass_corner_tl',    // 6
-            'grass_corner_tr',    // 7
-        ],
+        ids: [],   // procedural — dark moody palette
         fallback: 'procedural',
     },
 
@@ -136,12 +127,7 @@ const TILE_MANIFEST = {
     //  4 variants picked by (tx*11 + ty*7) & 3
     // ─────────────────────────────────────────────────────────────
     PATH: {
-        ids: [
-            'dirt_path_cross',    // 0 — crossroads
-            'dirt_center',        // 1 — plain dirt
-            'dirt_path_h',        // 2 — horizontal path
-            'dirt_path_v',        // 3 — vertical path
-        ],
+        ids: [],   // procedural — dark moody palette
         fallback: 'procedural',
     },
 
@@ -151,12 +137,7 @@ const TILE_MANIFEST = {
     //  atlas entries are mapped.
     // ─────────────────────────────────────────────────────────────
     FLOOR_LIGHT: {
-        ids: [
-            'path_stone_c',   // 0 — stone floor (best available stand-in)
-            'path_stone_c',   // 1
-            'path_stone_c',   // 2
-            'path_stone_c',   // 3
-        ],
+        ids: [],   // procedural
         fallback: 'procedural',
     },
 
@@ -164,12 +145,7 @@ const TILE_MANIFEST = {
     //  FLOOR_DARK — dark dungeon floor  (TILE.FLOOR, dark=true)
     // ─────────────────────────────────────────────────────────────
     FLOOR_DARK: {
-        ids: [
-            'dirt_center',    // 0
-            'dirt_center',    // 1
-            'sand_dark',      // 2
-            'dirt_center',    // 3
-        ],
+        ids: [],   // procedural
         fallback: 'procedural',
     },
 
@@ -185,12 +161,7 @@ const TILE_MANIFEST = {
     //  Colour-verified via pixel-sampling 2026-04-16.
     // ─────────────────────────────────────────────────────────────
     WALL_EXT: {
-        ids: [
-            'building_row22_col0',   // 0 — orange-red ROOF tile
-            'building_row23_col0',   // 1 — warm tan wall body
-            'building_row23_col2',   // 2 — dark right-edge border
-            'building_row27_col0',   // 3 — darker shadow/foundation row
-        ],
+        ids: [],   // procedural — dark moody stone
         fallback: 'procedural',
     },
 
@@ -201,12 +172,7 @@ const TILE_MANIFEST = {
     //  Verified: rgb(132,110,101) (132,110,100) (156,116,88) (155,119,95)
     // ─────────────────────────────────────────────────────────────
     WALL_INT: {
-        ids: [
-            'building_row13_col5',   // 0 — warm brown wood
-            'building_row13_col6',   // 1 — warm brown wood variant
-            'building_row13_col7',   // 2 — rich warm brown
-            'building_row13_col8',   // 3 — warm brown plank
-        ],
+        ids: [],   // procedural
         fallback: 'procedural',
     },
 
@@ -217,12 +183,7 @@ const TILE_MANIFEST = {
     //  Verified: rgb(100,98,87) (121,115,101) (134,117,110) (129,106,97)
     // ─────────────────────────────────────────────────────────────
     WALL_DUN: {
-        ids: [
-            'building_row14_col0',   // 0 — dark grey stone
-            'building_row14_col1',   // 1 — medium grey stone
-            'building_row14_col3',   // 2 — warm stone
-            'building_row14_col4',   // 3 — brownish stone
-        ],
+        ids: [],   // procedural
         fallback: 'procedural',
     },
 
@@ -232,12 +193,7 @@ const TILE_MANIFEST = {
     //  Verified: rgb(116,101,73) (116,102,99) (116,112,99) (108,104,91)
     // ─────────────────────────────────────────────────────────────
     CEILING: {
-        ids: [
-            'building_row15_col0',   // 0 — warm brown roof
-            'building_row15_col1',   // 1 — warm tan roof
-            'building_row15_col2',   // 2 — neutral tan roof
-            'building_row15_col3',   // 3 — neutral stone roof
-        ],
+        ids: [],   // procedural
         fallback: 'procedural',
     },
 
@@ -247,10 +203,7 @@ const TILE_MANIFEST = {
     //  2 variants picked by (tx*5 + ty*9) & 1
     // ─────────────────────────────────────────────────────────────
     TREE: {
-        ids: [
-            'tree_large_tl',   // 0 — upper-left canopy quad
-            'tree_large_tm',   // 1 — upper-mid canopy quad
-        ],
+        ids: [],   // procedural — dark moody canopy
         isOverlay: true,
         fallback:  'procedural',
     },
@@ -260,8 +213,8 @@ const TILE_MANIFEST = {
     //  animId → atlas entry with frames=4 horizontal strip
     // ─────────────────────────────────────────────────────────────
     WATER: {
-        animId:     'water_waves',
-        frameCount: 4,
+        animId:     null,   // procedural — dark moody water frames
+        frameCount: 0,
         animated:   true,
         fallback:   'procedural',
     },
