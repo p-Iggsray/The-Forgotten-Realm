@@ -117,6 +117,46 @@ const PALETTE = Object.freeze({
     TIMING_WEAK:   '#5a1a10',  // = M_BRICK
     TIMING_HIT:    '#2a4818',  // = M_MOSS
     TIMING_CRIT:   '#387820',  // = L_LEAF
+
+    // ── VILLAGE GREENS (grass needs readable range) ──────────
+    V_GRASS_BASE:  '#2d5a1b',  // mid forest green — readable grass base
+    V_GRASS_MID:   '#3d7a24',  // brighter mid green — grass body
+    V_GRASS_HI:    '#5aaa30',  // bright leaf green — grass blade tips / dew
+    V_GRASS_DARK:  '#1a3a0e',  // shadow green — tile depth fringe
+    V_GRASS_DRY:   '#8a7040',  // dry/dead grass — yellowish tan
+
+    // ── DIRT PATH (needs warm readable browns) ───────────────
+    V_DIRT_BASE:   '#7a5530',  // warm mid brown — path base fill
+    V_DIRT_LIGHT:  '#a07848',  // light sandy tan — path stone faces
+    V_DIRT_DARK:   '#3a2010',  // deep shadow brown — mortar / grout
+    V_DIRT_HI:     '#c8a060',  // bright highlight — sun-lit stone top edge
+
+    // ── STONE / COBBLE ───────────────────────────────────────
+    V_STONE_BASE:  '#5a5248',  // mid grey-brown stone — cobble base
+    V_STONE_HI:    '#8a7c68',  // lighter warm stone — bevel highlight
+    V_STONE_DARK:  '#2a2420',  // deep shadow stone — bevel shadow
+    V_STONE_MOSS:  '#3a5828',  // mossy stone overlay colour
+
+    // ── TREE / FOLIAGE ───────────────────────────────────────
+    V_TREE_DARK:   '#0e2808',  // darkest canopy shadow
+    V_TREE_BASE:   '#1e5010',  // main canopy body
+    V_TREE_MID:    '#307818',  // mid canopy / inner volume
+    V_TREE_HI:     '#4a9e28',  // bright specular patch top-left of canopy
+    V_TREE_BARK:   '#3a1e08',  // trunk bark mid tone
+    V_TREE_BARK_HI:'#5a3010',  // trunk highlight stripe
+
+    // ── WATER (needs more readable depth range) ──────────────
+    V_WATER_DEEP:  '#0a1828',  // deep water — bottom zone
+    V_WATER_MID:   '#1a3850',  // mid water — body
+    V_WATER_SURF:  '#2a5878',  // surface water — upper zone
+    V_WATER_HI:    '#4a88a8',  // highlight line / shimmer
+    V_WATER_FOAM:  '#88b8c8',  // foam / specular glint
+
+    // ── WALL / BUILDING ──────────────────────────────────────
+    V_WALL_BASE:   '#4a3e30',  // dark stone wall face
+    V_WALL_HI:     '#6a5a48',  // lit stone face / top edge
+    V_WALL_DARK:   '#1e1810',  // deep shadow / mortar
+    V_WALL_MOSS:   '#2e4a18',  // aged moss stain on wall
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1284,8 +1324,8 @@ function resizeCanvas() {
     lightCanvas = null; // force recreation at new size
     invalidateTileCache(); // rebuild tile variants at new TS
     if (typeof spriteRenderer !== 'undefined') {
-        spriteRenderer.invalidate();           // discard stale tile canvases cut at old TS
-        if (spriteRenderer.isReady()) spriteRenderer.warmCache(TS); // rebuild at new TS immediately
+        spriteRenderer.invalidate();           // invalidates tileRenderer cache internally
+        if (spriteRenderer.isReady()) spriteRenderer.warmCache(TS); // pre-warm all rows at new TS
     }
     if (typeof VQ !== 'undefined') VQ.invalidate(); // rebuild sway frames at new TS
     _invalidateVigGrd(); // vignette gradient is sized to cW/cH — must rebuild
@@ -1519,18 +1559,19 @@ function _buildTileCache() {
         };
 
     // ─────────────────────────────────────────────────────
-    // GRASS — 8 pixel-art variants, no blur, palette only
+    // GRASS — 12 pixel-art variants, no blur, palette only
     // Type A (v0-2,7): solid base + scattered 1px dew + L-blades
     // Type B (v3-4):   dithered dark/mid patches + cross flowers
     // Type C (v5):     dry — dithered mid/sand + crack marks
     // Type D (v6):     dense dark — dark base + extra blades
+    // Type E (v8-11):  wildflower, fern, stone scatter, mossy
     // ─────────────────────────────────────────────────────
-    for (let v = 0; v < 8; v++) {
+    for (let v = 0; v < 12; v++) {
         const can = _mkTile(), c = can.getContext('2d');
         const rng = _rng(v * 37 + 5);
         const isDry  = v === 5, isDark = v === 6;
-        const base1  = isDry ? P.M_SAND    : isDark ? P.D_GREEN  : P.M_FOREST;
-        const base2  = isDry ? P.L_STONE   : isDark ? P.M_FOREST : P.M_MOSS;
+        const base1  = isDry ? P.V_GRASS_DRY  : isDark ? P.V_GRASS_DARK : P.V_GRASS_BASE;
+        const base2  = isDry ? P.V_DIRT_BASE   : isDark ? P.V_GRASS_BASE : P.V_GRASS_MID;
         // ── Solid base ──────────────────────────────────
         c.fillStyle = base1; c.fillRect(0, 0, T, T);
 
@@ -1540,40 +1581,43 @@ function _buildTileCache() {
             for (let i = 0; i < 5; i++) {
                 const px2 = Math.floor(rng()*(T-U*6)), py2 = Math.floor(rng()*(T-U*6));
                 const pw = Math.floor(rng()*U*10+U*3), ph = Math.floor(rng()*U*8+U*2);
-                _db(c, px2, py2, Math.min(pw,T-px2), Math.min(ph,T-py2), P.M_FOREST, P.D_GREEN, 0.45);
+                _db(c, px2, py2, Math.min(pw,T-px2), Math.min(ph,T-py2), P.V_GRASS_BASE, P.V_GRASS_DARK, 0.45);
             }
         } else if (v === 5) {
-            // Type C — dither mid/sand across full tile
-            dither2(c, 0, 0, T, T, P.M_SAND, P.L_STONE, 0);
-        } else {
+            // Type C — dither dry/dirt across full tile
+            dither2(c, 0, 0, T, T, P.V_GRASS_DRY, P.V_DIRT_BASE, 0);
+        } else if (v < 8) {
             // Type A / D — scattered secondary colour blobs
             c.fillStyle = base2;
-            for (let i = 0; i < 18; i++) {
+            for (let i = 0; i < 22; i++) {
                 const sw = Math.floor(rng()*U*4+U), sh = Math.floor(rng()*U*3+U);
                 c.fillRect(Math.floor(rng()*(T-sw)), Math.floor(rng()*(T-sh)), sw, sh);
             }
         }
 
         // ── Dew / highlight scatter (1-px pixels) ────────
-        const hiCol = isDry ? P.L_STONE : isDark ? P.M_MOSS : P.L_LEAF;
-        const hiCount = isDark ? 8 : (v === 3 || v === 4) ? 5 : 6;
-        c.fillStyle = hiCol;
-        for (let i = 0; i < hiCount; i++)
-            c.fillRect(Math.floor(rng()*(T-U*2)+U), Math.floor(rng()*(T-U*2)+U), 1, 1);
+        const hiCol = isDry ? P.V_DIRT_LIGHT : isDark ? P.V_GRASS_BASE : P.V_GRASS_HI;
+        const hiCount = isDark ? 8 : (v === 3 || v === 4) ? 5 : 12;
+        if (v < 8) {
+            c.fillStyle = hiCol;
+            for (let i = 0; i < hiCount; i++)
+                c.fillRect(Math.floor(rng()*(T-U*2)+U), Math.floor(rng()*(T-U*2)+U), 1, 1);
+        }
 
         // ── L-shaped grass blades with shaded tips ───────
-        const bladeCol = isDry ? P.M_CLAY : isDark ? P.D_GREEN : P.M_FOREST;
-        const bladeTip = isDry ? P.L_STONE : isDark ? P.M_MOSS : P.L_LEAF;
-        for (let i = 0; i < 6; i++) {
-            const bx2 = Math.floor(rng()*(T-U*4)+U), by2 = Math.floor(rng()*(T-U*5)+U);
-            c.fillStyle = bladeCol; c.fillRect(bx2, by2+1, 1, U*2);  // stem
-            c.fillStyle = bladeTip; c.fillRect(bx2, by2,   1, 1);     // bright tip
-            if (i % 2 === 0) { c.fillStyle = bladeCol; c.fillRect(bx2+1, by2, 1, 1); } // L foot
+        const bladeCol = isDry ? P.V_DIRT_BASE   : isDark ? P.V_GRASS_DARK : P.V_GRASS_MID;
+        const bladeTip = isDry ? P.V_DIRT_LIGHT  : isDark ? P.V_GRASS_BASE : P.V_GRASS_HI;
+        if (v < 8) {
+            for (let i = 0; i < 12; i++) {
+                const bx2 = Math.floor(rng()*(T-U*4)+U), by2 = Math.floor(rng()*(T-U*5)+U);
+                c.fillStyle = bladeCol; c.fillRect(bx2, by2+1, 1, U*2);  // stem
+                c.fillStyle = bladeTip; c.fillRect(bx2, by2,   1, 1);     // bright tip
+                if (i % 2 === 0) { c.fillStyle = bladeCol; c.fillRect(bx2+1, by2, 1, 1); } // L foot
+            }
         }
         // ── Ground-depth shadow — Bayer fringe at lower 38% ─
-        // Darkens the bottom of each tile to suggest ground shadow depth.
-        if (!isDry) {
-            _db(c, 0, Math.floor(T*0.62), T, Math.floor(T*0.38), base1, P.D_GREEN, 0.28);
+        if (!isDry && v < 8) {
+            _db(c, 0, Math.floor(T*0.62), T, Math.floor(T*0.38), base1, P.V_GRASS_DARK, 0.28);
         }
         // ── Per-variant pixel-art detail ─────────────────
         switch (v) {
@@ -1600,14 +1644,14 @@ function _buildTileCache() {
             }
             case 3: { // Type B — mushroom (solid palette colors)
                 const mx = Math.floor(T*0.37), my = Math.floor(T*0.44);
-                c.fillStyle = P.S_MID;  c.fillRect(mx, my, U*2, U*3);           // stem
+                c.fillStyle = P.S_MID;   c.fillRect(mx, my, U*2, U*3);          // stem
                 c.fillStyle = P.M_BRICK; c.fillRect(mx-U, my-U*2, U*4, U*2);   // cap
                 c.fillStyle = P.L_WHITE; c.fillRect(mx+U, my-U*2, 1, 1);       // spot
                 c.fillRect(Math.floor(mx-U*.5), my-U, 1, 1);
                 break;
             }
             case 4: { // Type B — extra dark blade clusters
-                c.fillStyle = P.D_GREEN;
+                c.fillStyle = P.V_GRASS_DARK;
                 for (let i = 0; i < 6; i++) {
                     const bx2 = Math.floor(rng()*(T-2)), by2 = Math.floor(rng()*(T-U*4));
                     c.fillRect(bx2, by2, 1, U*2);
@@ -1616,13 +1660,13 @@ function _buildTileCache() {
             }
             case 5: { // Type C — cracked earth patch + sparse pixels
                 const cpx = Math.floor(rng()*T*0.5+T*0.2), cpy = Math.floor(rng()*T*0.4+T*0.3);
-                c.fillStyle = P.M_CLAY; c.fillRect(cpx, cpy, U*3, U);           // crack patch
+                c.fillStyle = P.V_DIRT_BASE; c.fillRect(cpx, cpy, U*3, U);     // crack patch
                 c.fillStyle = P.D_BROWN;
-                for (let i = 0; i < 4; i++) c.fillRect(cpx+i, cpy, 1, 1);      // crack dots
+                for (let i = 0; i < 4; i++) c.fillRect(cpx+i, cpy, 1, 1);     // crack dots
                 break;
             }
             case 6: { // Type D — dense, extra dark short blades
-                c.fillStyle = P.D_GREEN;
+                c.fillStyle = P.V_GRASS_DARK;
                 for (let i = 0; i < 8; i++) {
                     const bx2 = Math.floor(rng()*(T-2)), by2 = Math.floor(rng()*(T-U*3));
                     c.fillRect(bx2, by2, 1, U*2+1);
@@ -1632,13 +1676,59 @@ function _buildTileCache() {
             case 7: { // Type A — clover: 3 arcs + bright center pixel
                 for (let cl = 0; cl < 2; cl++) {
                     const clx = Math.floor(rng()*(T-U*8)+U*4), cly = Math.floor(rng()*(T-U*8)+U*4);
-                    c.fillStyle = P.L_LEAF;
+                    c.fillStyle = P.V_GRASS_HI;
                     c.beginPath(); c.arc(clx,        cly-U*1.2, U*1.1, 0, Math.PI*2); c.fill();
                     c.beginPath(); c.arc(clx-U*1.2,  cly+U*.7,  U*1.1, 0, Math.PI*2); c.fill();
                     c.beginPath(); c.arc(clx+U*1.2,  cly+U*.7,  U*1.1, 0, Math.PI*2); c.fill();
                     c.fillStyle = P.L_WHITE;
                     c.fillRect(clx, cly, 1, 1);
                 }
+                break;
+            }
+            case 8: { // Wildflower patch — 3 five-petal flowers
+                for (let fl = 0; fl < 3; fl++) {
+                    const fx = Math.floor(rng()*(T-U*8)+U*4), fy = Math.floor(rng()*(T-U*8)+U*4);
+                    c.fillStyle = P.A_PURPLE;
+                    c.fillRect(fx-1, fy,   1, 1); c.fillRect(fx+1, fy,   1, 1);
+                    c.fillRect(fx,   fy-1, 1, 1); c.fillRect(fx,   fy+1, 1, 1);
+                    c.fillStyle = P.A_YELLOW;
+                    c.fillRect(fx, fy, 1, 1);
+                }
+                break;
+            }
+            case 9: { // Fern fronds — 3 diagonal strokes mirrored
+                for (let fr = 0; fr < 3; fr++) {
+                    const fx = Math.floor(rng()*(T-U*8)+U*4), fy = Math.floor(rng()*(T-U*6)+U*4);
+                    c.fillStyle = P.V_GRASS_MID;
+                    for (let i = 1; i <= 6; i++) {
+                        c.fillRect(fx - i, fy - i, 1, 1);
+                        c.fillRect(fx + i, fy - i, 1, 1);
+                    }
+                    c.fillStyle = P.V_GRASS_HI;
+                    c.fillRect(fx - 6, fy - 6, 1, 1);
+                    c.fillRect(fx + 6, fy - 6, 1, 1);
+                }
+                break;
+            }
+            case 10: { // Stone scatter — pebbles on green base
+                for (let p = 0; p < 4; p++) {
+                    const px2 = Math.floor(rng()*(T-U*3)+U), py2 = Math.floor(rng()*(T-U*2)+U);
+                    c.fillStyle = P.V_STONE_BASE;
+                    c.fillRect(px2, py2, U*2, U);
+                    c.fillStyle = P.V_STONE_HI;   c.fillRect(px2, py2, U*2, 1);        // top-left bevel
+                    c.fillStyle = P.V_STONE_DARK; c.fillRect(px2, py2+U-1, U*2, 1);    // bottom-right shadow
+                }
+                break;
+            }
+            case 11: { // Mossy ground — dark base, heavy Bayer moss patches + blade tips
+                for (let i = 0; i < 3; i++) {
+                    const mpx = Math.floor(rng()*T*0.5), mpy = Math.floor(rng()*T*0.5);
+                    const mpw = Math.floor(T*0.45+rng()*T*0.20), mph = Math.floor(T*0.40+rng()*T*0.20);
+                    _db(c, mpx, mpy, Math.min(mpw,T-mpx), Math.min(mph,T-mpy), P.V_STONE_MOSS, P.V_GRASS_DARK, 0.45);
+                }
+                c.fillStyle = P.V_GRASS_HI;
+                for (let i = 0; i < 8; i++)
+                    c.fillRect(Math.floor(rng()*(T-U*2)+U), Math.floor(rng()*(T-U*2)+U), 1, 1);
                 break;
             }
         }
@@ -1648,54 +1738,52 @@ function _buildTileCache() {
 
     // ─────────────────────────────────────────────────────
     // PATH — 4 variants, beveled cobblestones
-    // Each stone: flat fill, 1px L_STONE highlight top-left,
-    // 1px D_STONE shadow bottom-right. Mortar: 1px D_BROWN lines.
+    // Each stone: flat fill, V_DIRT_HI highlight top-left,
+    // V_STONE_DARK shadow bottom-right. Mortar: V_DIRT_DARK lines.
     // ─────────────────────────────────────────────────────
     for (let v = 0; v < 4; v++) {
         const can = _mkTile(), c = can.getContext('2d');
         const gap = Math.max(1, Math.floor(T/18)), half = Math.floor(T/2);
         // Mortar base
-        c.fillStyle = P.M_CLAY; c.fillRect(0, 0, T, T);
-        // Mossy variant: dither M_MOSS into mortar lines
+        c.fillStyle = P.V_DIRT_DARK; c.fillRect(0, 0, T, T);
+        // Mossy variant: moss pixels in mortar lines
         if (v === 2) {
-            c.fillStyle = P.M_MOSS;
+            c.fillStyle = P.V_STONE_MOSS;
             c.fillRect(0, half-1, T, 1); c.fillRect(half-1, 0, 1, T);
         }
-        // Stone colour per variant (all from M_SAND / L_STONE)
-        const stoneCols = [P.M_SAND, P.L_STONE, P.M_SAND, P.L_STONE];
+        // Stone colour per variant — warm browns alternating
+        const stoneCols = [P.V_DIRT_BASE, P.V_STONE_BASE, P.V_DIRT_BASE, P.V_STONE_BASE];
         const sc = stoneCols[v];
         [[gap,gap],[half+gap,gap],[gap,half+gap],[half+gap,half+gap]].forEach(([ox,oy]) => {
             const sw = half-gap*2, sh = half-gap*2;
             // Flat fill
             c.fillStyle = sc; c.fillRect(ox, oy, sw, sh);
             // Worn center — subtle Bayer-dithered lighter highlight in center ~50%
-            // of each cobblestone face, simulating sun-bleached high-traffic wear.
             if (sw > 4 && sh > 4) {
                 _db(c, ox+Math.floor(sw*0.25), oy+Math.floor(sh*0.25),
-                    Math.floor(sw*0.50), Math.floor(sh*0.50), sc, P.L_STONE, 0.20);
+                    Math.floor(sw*0.50), Math.floor(sh*0.50), sc, P.V_STONE_HI, 0.20);
             }
             // Bevel: 2px bright top + left edges
-            c.fillStyle = P.L_WHITE;
+            c.fillStyle = P.V_DIRT_HI;
             c.fillRect(ox, oy, sw, 1);         // top highlight (outer)
             c.fillRect(ox, oy, 1, sh);         // left highlight (outer)
-            c.fillStyle = P.L_STONE;
+            c.fillStyle = P.V_DIRT_LIGHT;
             c.fillRect(ox, oy+1, sw, 1);       // top highlight (inner)
             c.fillRect(ox+1, oy, 1, sh);       // left highlight (inner)
             // Bevel: 2px dark bottom + right edges
-            c.fillStyle = P.D_STONE;
+            c.fillStyle = P.V_STONE_DARK;
             c.fillRect(ox,      oy+sh-1, sw, 1);  // bottom shadow (outer)
             c.fillRect(ox+sw-1, oy,      1, sh);  // right shadow (outer)
-            c.fillStyle = P.D_BROWN;
+            c.fillStyle = P.V_DIRT_DARK;
             c.fillRect(ox,      oy+sh-2, sw, 1);  // bottom shadow (inner)
             c.fillRect(ox+sw-2, oy,      1, sh);  // right shadow (inner)
         });
         // Edge darkening — cast shadow from tiles to the south and east.
-        // Makes the path read as a flat surface with depth at tile boundaries.
-        c.fillStyle = P.D_BROWN;
+        c.fillStyle = P.V_DIRT_DARK;
         c.fillRect(0, T-Math.max(1,gap), T, Math.max(1,gap)); // south edge
         c.fillRect(T-Math.max(1,gap), 0, Math.max(1,gap), T); // east edge
         if (v === 1 || v === 3) { // hairline cracks — 2-3 diagonal 1px dots
-            c.fillStyle = P.D_BROWN;
+            c.fillStyle = P.V_DIRT_DARK;
             for (let i = 0; i < 4; i++) c.fillRect(gap+2+i, gap+2+i, 1, 1);
             for (let i = 0; i < 3; i++) c.fillRect(half+gap+3+i, half+gap+3+i, 1, 1);
         }
@@ -1714,7 +1802,7 @@ function _buildTileCache() {
         const can = _mkTile(), c = can.getContext('2d');
         const rng = _rng(v*53+13);
         const bH = Math.floor(T/4), bW = Math.floor(T/2);
-        c.fillStyle = P.M_CLAY; c.fillRect(0, 0, T, T); // mortar
+        c.fillStyle = P.V_WALL_DARK; c.fillRect(0, 0, T, T); // mortar
         for (let row = 0; row < 4; row++) {
             const by = Math.floor(row*bH), off = (row%2)*Math.floor(bW/2);
             for (let col = -1; col < 3; col++) {
@@ -1722,18 +1810,18 @@ function _buildTileCache() {
                 const x1 = Math.max(1,bx+1), x2 = Math.min(T-1,bx+bW-1);
                 const y1 = by+1, y2 = by+bH-1;
                 if (x2<=x1||y2<=y1) continue;
-                c.fillStyle = (row+col)%2===0 ? P.M_STONE : P.L_STONE;
+                c.fillStyle = (row+col)%2===0 ? P.V_WALL_BASE : P.V_WALL_HI;
                 c.fillRect(x1, y1, x2-x1, y2-y1);
-                c.fillStyle = P.L_WHITE; c.fillRect(x1, y1, x2-x1, 1);         // top hi
-                c.fillStyle = P.D_STONE; c.fillRect(x1, y2-1, x2-x1, 1);       // bottom sh
+                c.fillStyle = P.V_WALL_HI;   c.fillRect(x1, y1, x2-x1, 1);       // top hi
+                c.fillStyle = P.V_WALL_DARK; c.fillRect(x1, y2-1, x2-x1, 1);     // bottom sh
             }
         }
         if (v===1) { // occasional moss pixel on lower stones
-            c.fillStyle = P.M_MOSS;
+            c.fillStyle = P.V_WALL_MOSS;
             for (let i=0;i<3;i++) c.fillRect(Math.floor(rng()*T), Math.floor(T*.6+rng()*T*.3), 1, 1);
         }
         if (v===3) { // dithered dark patch — age staining lower quarter
-            dither2(c, 0, Math.floor(T*.75), T, Math.floor(T*.25), P.M_STONE, P.D_STONE, 0);
+            dither2(c, 0, Math.floor(T*.75), T, Math.floor(T*.25), P.V_WALL_BASE, P.V_WALL_DARK, 0);
         }
         _tc[`wex${v}`] = can;
     }
@@ -1848,19 +1936,19 @@ function _buildTileCache() {
         for (let dy = 0; dy < shH; dy++)
             for (let dx = 0; dx < shW; dx++)
                 if (!((dx+dy)&1)) c.fillRect(Math.floor(T*.20)+dx, shY+dy, 1, 1);
-        // Trunk (3-color flat strips: D_BROWN base, M_CLAY center highlight)
-        c.fillStyle = P.D_BROWN; c.fillRect(Math.floor(T/2-tW/2), Math.floor(T*.44), tW, tH);
-        c.fillStyle = P.M_CLAY;  c.fillRect(Math.floor(T/2-tW/2+Math.floor(tW*.25)), Math.floor(T*.44), Math.floor(tW*.40), tH);
+        // Trunk — V_TREE_BARK base, V_TREE_BARK_HI highlight stripe
+        c.fillStyle = P.V_TREE_BARK;    c.fillRect(Math.floor(T/2-tW/2), Math.floor(T*.44), tW, tH);
+        c.fillStyle = P.V_TREE_BARK_HI; c.fillRect(Math.floor(T/2-tW/2+Math.floor(tW*.25)), Math.floor(T*.44), Math.floor(tW*.40), tH);
         // Canopy layers — pixel-art ellipses (no anti-aliasing), squashed vertically for depth
         const ry = Math.floor(r * 0.82); // slight vertical squash
-        // Outer shadow ring (D_GREEN darkest, full radius)
-        _el(c, cx2, cy2, Math.floor(r), ry, P.D_GREEN);
-        // Main canopy body (M_FOREST, inset 10%)
-        _el(c, cx2, cy2 - Math.floor(r*.06), Math.floor(r*.86), Math.floor(ry*.84), P.M_FOREST);
-        // Inner highlight mass (M_MOSS, upper-left offset)
-        _el(c, cx2 - Math.floor(r*.16), cy2 - Math.floor(r*.18), Math.floor(r*.62), Math.floor(ry*.58), P.M_MOSS);
-        // Bright specular patch upper-left (L_LEAF rectangle, crisp pixel-art)
-        c.fillStyle = P.L_LEAF;
+        // Outer shadow ring (V_TREE_DARK darkest, full radius)
+        _el(c, cx2, cy2, Math.floor(r), ry, P.V_TREE_DARK);
+        // Main canopy body (V_TREE_BASE, inset 10%)
+        _el(c, cx2, cy2 - Math.floor(r*.06), Math.floor(r*.86), Math.floor(ry*.84), P.V_TREE_BASE);
+        // Inner highlight mass (V_TREE_MID, upper-left offset)
+        _el(c, cx2 - Math.floor(r*.16), cy2 - Math.floor(r*.18), Math.floor(r*.62), Math.floor(ry*.58), P.V_TREE_MID);
+        // Bright specular patch upper-left (V_TREE_HI rectangle, crisp pixel-art)
+        c.fillStyle = P.V_TREE_HI;
         c.fillRect(Math.floor(cx2 - r*.36), Math.floor(cy2 - r*.40), Math.floor(r*.30), Math.floor(r*.22));
         // 2px specular glint (L_WHITE)
         c.fillStyle = P.L_WHITE;
@@ -1870,12 +1958,12 @@ function _buildTileCache() {
                 const a = (i / 5) * Math.PI * 2;
                 const bx3 = Math.round(cx2 + Math.cos(a) * r * .65);
                 const by3 = Math.round(cy2 + Math.sin(a) * r * .44);
-                _el(c, bx3, by3, Math.floor(r*.23), Math.floor(r*.18), P.D_GREEN);
+                _el(c, bx3, by3, Math.floor(r*.23), Math.floor(r*.18), P.V_TREE_DARK);
             }
         }
         if (cfg.wide) { // lateral side lobes — pixel-art ellipses
-            _el(c, cx2 - Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.M_FOREST);
-            _el(c, cx2 + Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.M_FOREST);
+            _el(c, cx2 - Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.V_TREE_BASE);
+            _el(c, cx2 + Math.floor(r*.54), cy2 + Math.floor(r*.10), Math.floor(r*.28), Math.floor(r*.22), P.V_TREE_BASE);
         }
         _tc[`tr${v}`] = can;
     }
@@ -1952,9 +2040,9 @@ function _buildTileCache() {
 
     // ── WATER  8 animation frames (flipbook @ 4fps = 250ms/frame) ──
     // Three depth zones via Bayer dithering:
-    //   Surface  0–35%:  M_TEAL  / L_WATER  caustic shimmer
-    //   Mid     35–65%:  M_TEAL  / M_SLATE  (Bayer 50%)
-    //   Deep    65–100%: M_SLATE / D_BLUE   (Bayer 28%)
+    //   Surface  0–35%:  V_WATER_SURF / V_WATER_HI  caustic shimmer
+    //   Mid     35–65%:  V_WATER_MID  / V_WATER_DEEP (Bayer 55%)
+    //   Deep    65–100%: V_WATER_DEEP solid fill
     // Per frame: primary highlight line shifts ±2px; ripple ellipses
     // grow/fade in two independent off-center pools.
     for (let f = 0; f < 8; f++) {
@@ -1962,28 +2050,28 @@ function _buildTileCache() {
         c.imageSmoothingEnabled = false;
 
         // ── 1. Deep bottom ──────────────────────────────
-        c.fillStyle = P.D_BLUE; c.fillRect(0, 0, T, T);
-        // Mid depth: Bayer blend M_SLATE into deep zone
-        _db(c, 0, Math.floor(T*0.40), T, Math.floor(T*0.30), P.M_SLATE, P.D_BLUE,  0.55);
-        // Surface zone: solid M_TEAL over upper portion
-        c.fillStyle = P.M_TEAL; c.fillRect(0, 0, T, Math.floor(T*0.40));
+        c.fillStyle = P.V_WATER_DEEP; c.fillRect(0, 0, T, T);
+        // Mid depth: Bayer blend V_WATER_MID into deep zone
+        _db(c, 0, Math.floor(T*0.40), T, Math.floor(T*0.30), P.V_WATER_MID, P.V_WATER_DEEP, 0.55);
+        // Surface zone: solid V_WATER_SURF over upper portion
+        c.fillStyle = P.V_WATER_SURF; c.fillRect(0, 0, T, Math.floor(T*0.40));
         // Bayer transition surface → mid
-        _db(c, 0, Math.floor(T*0.33), T, Math.floor(T*0.14), P.M_TEAL, P.M_SLATE, 0.50);
+        _db(c, 0, Math.floor(T*0.33), T, Math.floor(T*0.14), P.V_WATER_SURF, P.V_WATER_MID, 0.50);
 
         // ── 2. Caustic shimmer at surface ───────────────
-        _db(c, 0, 0, T, Math.floor(T*0.32), P.M_TEAL, P.L_WATER, 0.11);
+        _db(c, 0, 0, T, Math.floor(T*0.32), P.V_WATER_SURF, P.V_WATER_HI, 0.11);
 
         // ── 3. Drifting primary highlight line ──────────
         // Moves up by 1px per frame then wraps at top of tile
         const hlY = Math.floor(T*0.22) - (f & 3) * Math.floor(T*0.025);
-        c.fillStyle = P.L_WATER;
+        c.fillStyle = P.V_WATER_HI;
         c.fillRect(Math.floor(T*0.08), hlY, Math.floor(T*0.55), 1);
-        c.fillStyle = P.L_WHITE;
+        c.fillStyle = P.V_WATER_FOAM;
         c.fillRect(Math.floor(T*0.26), hlY, Math.floor(T*0.20), 1); // bright center
 
         // ── 4. Secondary highlight (inverted phase) ─────
         const hlY2 = Math.floor(T*0.62) + (f & 3) * Math.floor(T*0.02);
-        c.fillStyle = P.L_BLUE;
+        c.fillStyle = P.V_WATER_HI;
         c.fillRect(Math.floor(T*0.45), hlY2, Math.floor(T*0.34), 1);
 
         // ── 5. Ripple A — left-center pool ──────────────
@@ -1993,7 +2081,7 @@ function _buildTileCache() {
             const rAr   = [0, 2, 4, 3][rAphase];
             const rAalp = [0, 0.85, 0.65, 0.30][rAphase];
             c.globalAlpha = rAalp;
-            _el(c, Math.floor(T*0.30), Math.floor(T*0.55), rAr, Math.max(1, Math.ceil(rAr*0.55)), P.L_WATER);
+            _el(c, Math.floor(T*0.30), Math.floor(T*0.55), rAr, Math.max(1, Math.ceil(rAr*0.55)), P.V_WATER_HI);
             c.globalAlpha = 1;
         }
 
@@ -2004,14 +2092,14 @@ function _buildTileCache() {
             const rBalp = [0, 0.75, 0.55, 0.25][rBphase > 3 ? 0 : rBphase];
             if (rBr > 0) {
                 c.globalAlpha = rBalp;
-                _el(c, Math.floor(T*0.66), Math.floor(T*0.38), rBr, Math.max(1, Math.ceil(rBr*0.5)), P.L_WATER);
+                _el(c, Math.floor(T*0.66), Math.floor(T*0.38), rBr, Math.max(1, Math.ceil(rBr*0.5)), P.V_WATER_HI);
                 c.globalAlpha = 1;
             }
         }
 
         // ── 7. Specular glint (every 4 frames) ──────────
         if ((f & 3) === 0) {
-            c.fillStyle = P.L_WHITE;
+            c.fillStyle = P.V_WATER_FOAM;
             const gx = f === 0 ? Math.floor(T*0.14) : Math.floor(T*0.54);
             c.fillRect(gx, Math.floor(T*0.17), 2, 1);
             c.fillRect(Math.floor(T*0.42), Math.floor(T*0.42), 1, 1);
@@ -2148,7 +2236,7 @@ function buildVariantMap(map) {
                         // Preserve existing two-part packing:
                         //   bits [3:0] = grass sub-variant (drawn under canopy)
                         //   bits [5:4] = tree-canopy variant (0 or 1)
-                        v = ((tx * 7 + ty * 13) & 7)
+                        v = ((tx * 7 + ty * 13) & 11)
                           | (((tx * 5 + ty * 9) & 3) << 4);
                         break;
                     }
@@ -2202,8 +2290,8 @@ function buildVariantMap(map) {
             } else {
                 // ── Hash fallback (dungeon / interior maps) ──────────
                 switch (tile) {
-                    case TILE.GRASS:          v = (tx * 7  + ty * 13) & 7;                                    break;
-                    case TILE.TREE:           v = ((tx * 7 + ty * 13) & 7) | (((tx * 5 + ty * 9) & 3) << 4); break;
+                    case TILE.GRASS:          v = (tx * 7  + ty * 13) & 11;                                    break;
+                    case TILE.TREE:           v = ((tx * 7 + ty * 13) & 11) | (((tx * 5 + ty * 9) & 3) << 4); break;
                     case TILE.DIRT_PATH:      v = (tx * 11 + ty * 7)  & 3;                                    break;
                     case TILE.STONE_PATH:     v = (tx * 11 + ty * 7)  & 3;                                    break;
                     case TILE.BUILDING_FLOOR: v = (tx * 5  + ty * 17) & 3;                                    break;
@@ -2376,12 +2464,15 @@ function drawAnimatedTiles() {
 //  TILE RENDERING
 // ═══════════════════════════════════════════════════════
 function drawTile(tile, px, py, tx, ty) {
-    // ── Fully procedural — no sprite sheets, no image file loading ────────────
-    // Render trace: map.tiles[ty][tx] → tile ID → this switch → _tc blit or
-    // direct ctx primitives → bgCanvas (static) / main ctx (animated overlay)
+    const ipx = Math.floor(px), ipy = Math.floor(py);
+    // SpriteRenderer routes all tiles through tileRenderer's offscreen cache.
+    if (typeof spriteRenderer !== 'undefined' && spriteRenderer.isReady()) {
+        spriteRenderer.drawTile(tile, ipx, ipy, tx, ty);
+        return;
+    }
+    // ── Fallback: _tc cache (active only before SpriteRenderer is ready) ──────
     ensureTileCache();
     const dark = currentMap.dark;
-    const ipx = Math.floor(px), ipy = Math.floor(py);
     const S1 = TS + 1; // 1px over to close sub-pixel seams
     // Helper: is a tile ID a path-type (used for grass autotile blending)
     const _isPath = t => t === TILE.DIRT_PATH || t === TILE.STONE_PATH;
@@ -2480,7 +2571,7 @@ function drawTile(tile, px, py, tx, ty) {
             } else if (snb.some(t => _isPath(t))) {
                 ctx.drawImage(_tc[`p${(tx*11+ty*7)&3}`], ipx, ipy, S1, S1);
             } else {
-                ctx.drawImage(_tc[`g${(tx*7+ty*13)&7}`], ipx, ipy, S1, S1);
+                ctx.drawImage(_tc[`g${(tx*7+ty*13)&11}`], ipx, ipy, S1, S1);
             }
             if (onWall) drawWallPlaque(px, py);
             else        drawSignPost(px, py);

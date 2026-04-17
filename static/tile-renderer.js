@@ -512,6 +512,355 @@ function _drawRefWater(c, T, frame) {
 }
 
 
+// ── WALL  ────────────────────────────────────────────────────────────
+// subtype: 'EXT' exterior stone | 'INT' interior wood | 'DUN' dungeon rock | 'CEILING'
+function _drawRefWall(c, T, v, subtype) {
+    const P = PALETTE;
+    const U = Math.max(1, Math.floor(T / 16));
+
+    if (subtype === 'EXT') {
+        // Dark weathered stone brick — D_STONE/M_STONE base, D_VOID mortar
+        c.fillStyle = P.D_STONE;
+        c.fillRect(0, 0, T, T);
+
+        const brickH = Math.max(4, Math.floor(T / 5));
+        const brickW = Math.max(8, Math.floor(T / 3));
+        // Horizontal mortar lines
+        c.fillStyle = P.D_VOID;
+        for (let row = brickH; row < T; row += brickH) c.fillRect(0, row, T, 1);
+        // Vertical mortar lines (offset every other row)
+        for (let row = 0; row < 5; row++) {
+            const y0 = row * brickH;
+            const offset = (row % 2) * Math.floor(brickW / 2);
+            for (let col = offset; col < T; col += brickW)
+                c.fillRect(col, y0, 1, brickH);
+        }
+        // Stone faces: M_STONE with L_STONE top highlight
+        for (let row = 0; row < 5; row++) {
+            const y0 = row * brickH + 1;
+            const bh = brickH - 2;
+            const offset = (row % 2) * Math.floor(brickW / 2);
+            for (let col = offset; col < T; col += brickW) {
+                const x0 = col + 1, bw = Math.min(brickW - 2, T - x0);
+                if (bw <= 0) continue;
+                c.fillStyle = P.M_STONE; c.fillRect(x0, y0, bw, bh);
+                c.fillStyle = P.L_STONE; c.fillRect(x0, y0, bw, 1);
+            }
+        }
+        if (v === 1) {
+            // Mossy — Bayer-dither M_MOSS into lower half and right patch
+            _ditherBayer(c, 0, Math.floor(T * 0.55), T, Math.floor(T * 0.45), P.D_STONE, P.M_MOSS, 0.35);
+            _ditherBayer(c, Math.floor(T * 0.6), 0, Math.floor(T * 0.4), Math.floor(T * 0.3), P.M_STONE, P.M_MOSS, 0.25);
+        } else if (v === 2) {
+            // Crumbling edge: dark pixels scatter along right + bottom
+            c.fillStyle = P.D_VOID;
+            for (let y = 0; y < T; y += 2) c.fillRect(T - U, y, U, 1);
+            for (let x = 0; x < T; x += 3) c.fillRect(x, T - U, 1, U);
+        } else if (v === 3) {
+            // Stained: dark blotch dither upper-center
+            _ditherBayer(c, Math.floor(T * 0.2), 0, Math.floor(T * 0.6), Math.floor(T * 0.4), P.D_STONE, P.D_VOID, 0.4);
+        }
+
+    } else if (subtype === 'DUN') {
+        // Near-black dungeon rock — D_BLUE/D_STONE
+        c.fillStyle = P.D_BLUE;
+        c.fillRect(0, 0, T, T);
+        _ditherBayer(c, 0, 0, T, T, P.D_BLUE, P.D_STONE, 0.35);
+        // Jagged edge lines for rough silhouette feel
+        c.fillStyle = P.D_STONE;
+        for (let y = 0; y < T; y += Math.max(3, Math.floor(T / 8))) {
+            c.fillRect(0, y, Math.floor(T * 0.08) + (y % 5 > 2 ? U : 0), 1);
+            c.fillRect(T - Math.floor(T * 0.06), y, Math.floor(T * 0.06), 1);
+        }
+        if (v === 2) {
+            // Damp drip streaks in M_TEAL
+            c.fillStyle = P.M_TEAL;
+            for (let x = Math.floor(T * 0.2); x < T * 0.8; x += Math.floor(T * 0.28)) {
+                const dripLen = Math.floor(T * 0.4) + (x % 3) * Math.floor(T * 0.1);
+                c.fillRect(x,   Math.floor(T * 0.1), 1, dripLen);
+                c.fillRect(x+1, Math.floor(T * 0.1), 1, Math.floor(dripLen * 0.6));
+            }
+        } else if (v === 3) {
+            // Mineral vein: thin L_BLUE diagonal line
+            _line(c, Math.floor(T * 0.1), Math.floor(T * 0.2), Math.floor(T * 0.7), Math.floor(T * 0.8), P.L_BLUE);
+        }
+
+    } else if (subtype === 'INT') {
+        // Warm wood plank wall — M_CLAY/L_PARCH horizontal planks
+        c.fillStyle = P.M_CLAY;
+        c.fillRect(0, 0, T, T);
+        const plankH = Math.max(3, Math.floor(T / 4));
+        for (let row = 0; row < 4; row++) {
+            const y0 = row * plankH;
+            const bh = (row === 3) ? T - 3 * plankH : plankH;
+            c.fillStyle = (row % 2 === 0) ? P.M_CLAY : P.L_PARCH;
+            c.fillRect(0, y0, T, bh);
+            c.fillStyle = P.L_WHITE;  c.fillRect(0, y0, T, 1);          // top highlight
+            c.fillStyle = P.D_BROWN;  c.fillRect(0, y0+bh-1, T, 1);     // bottom shadow
+            c.fillStyle = P.D_BROWN;
+            c.fillRect(Math.floor(T * 0.33), y0+1, 1, bh-2);             // grain line
+            c.fillRect(Math.floor(T * 0.66), y0+1, 1, bh-2);
+        }
+        if (v === 3) {
+            // Knot detail
+            const kx = Math.floor(T * 0.5), ky = Math.floor(T * 0.5);
+            _ellipse(c, kx, ky, U*2, U, P.D_BROWN);
+            _ellipse(c, kx, ky, U,   U, P.D_VOID);
+        }
+
+    } else {
+        // CEILING — dark overhead beam: D_BROWN base, M_STONE edges, center crease
+        c.fillStyle = P.D_BROWN;
+        c.fillRect(0, 0, T, T);
+        c.fillStyle = P.M_STONE;
+        c.fillRect(0, 0, T, U*2);           // top edge
+        c.fillRect(0, T-U*2, T, U*2);       // bottom edge
+        c.fillStyle = P.D_VOID;
+        c.fillRect(0, Math.floor(T/2), T, 1);     // center crease shadow
+        c.fillStyle = P.M_CLAY;
+        c.fillRect(0, Math.floor(T/2)+1, T, 1);   // center crease highlight
+    }
+}
+
+
+// ── FLOOR  ───────────────────────────────────────────────────────────
+// dark=false: worn wood plank (M_CLAY/L_PARCH), foot-worn center highlight
+// dark=true:  dungeon flagstone (D_STONE/M_STONE), Bayer crack on v=1
+function _drawRefFloor(c, T, v, dark) {
+    const P = PALETTE;
+
+    if (dark) {
+        c.fillStyle = P.D_STONE;
+        c.fillRect(0, 0, T, T);
+        // 2×2 flagstone slab pattern — D_VOID mortar lines
+        const half = Math.floor(T / 2);
+        c.fillStyle = P.D_VOID;
+        c.fillRect(half, 0, 1, T);   // vertical center mortar
+        c.fillRect(0, half, T, 1);   // horizontal center mortar
+        // Slab faces: M_STONE
+        const rects = [[1,1,half-2,half-2],[half+1,1,T-half-2,half-2],
+                       [1,half+1,half-2,T-half-2],[half+1,half+1,T-half-2,T-half-2]];
+        for (const [x,y,w,h] of rects) {
+            c.fillStyle = P.M_STONE; c.fillRect(x, y, w, h);
+            c.fillStyle = P.L_STONE;
+            c.fillRect(x, y, w, 1);  // top highlight
+            c.fillRect(x, y, 1, h);  // left highlight
+        }
+        if (v === 1) {
+            // Bayer-dithered diagonal crack on top-left slab
+            _ditherBayer(c, Math.floor(T*0.1), Math.floor(T*0.3),
+                Math.floor(T*0.35), Math.floor(T*0.1), P.M_STONE, P.D_VOID, 0.5);
+        }
+    } else {
+        // Worn wood planks — same structure as WALL_INT but horizontal
+        const plankH = Math.max(3, Math.floor(T / 4));
+        for (let row = 0; row < 4; row++) {
+            const y0 = row * plankH;
+            const bh = (row === 3) ? T - 3*plankH : plankH;
+            c.fillStyle = (row % 2 === 0) ? P.M_CLAY : P.L_PARCH;
+            c.fillRect(0, y0, T, bh);
+            c.fillStyle = P.L_WHITE;  c.fillRect(0, y0, T, 1);
+            c.fillStyle = P.D_BROWN;  c.fillRect(0, y0+bh-1, T, 1);
+            c.fillStyle = P.D_BROWN;
+            c.fillRect(Math.floor(T*0.33), y0+1, 1, bh-2);
+            c.fillRect(Math.floor(T*0.66), y0+1, 1, bh-2);
+        }
+        // Foot-worn center highlight
+        _ditherBayer(c, Math.floor(T*0.25), Math.floor(T*0.1),
+            Math.floor(T*0.50), Math.floor(T*0.80), P.L_PARCH, P.L_WHITE, 0.15);
+        // Shadowed side edges (wall shadow)
+        _ditherBayer(c, 0, 0, Math.floor(T*0.08), T, P.M_CLAY, P.D_BROWN, 0.3);
+        _ditherBayer(c, T-Math.floor(T*0.08), 0, Math.floor(T*0.08), T, P.M_CLAY, P.D_BROWN, 0.3);
+    }
+}
+
+
+// ── TREE  ────────────────────────────────────────────────────────────
+// Composite — caller draws grass base first; this draws on transparent bg.
+// Layers: outer D_GREEN shell, M_FOREST body, M_MOSS mid-ring,
+//         Bayer light on top-left, D_BROWN trunk, root shadow pixels.
+function _drawRefTree(c, T, v) {
+    const P = PALETTE;
+    const U = Math.max(1, Math.floor(T / 16));
+
+    const cx = Math.floor(T / 2), cy = Math.floor(T * 0.42);
+    const rx = Math.floor(T * 0.38), ry = Math.floor(T * 0.35);
+
+    _ellipse(c, cx, cy, rx, ry, P.D_GREEN);
+    _ellipse(c, cx, cy, Math.floor(rx*0.80), Math.floor(ry*0.80), P.M_FOREST);
+    _ellipse(c, cx - Math.floor(rx*0.20), cy + Math.floor(ry*0.10),
+               Math.floor(rx*0.35), Math.floor(ry*0.30), P.M_MOSS);
+
+    // Bayer-dithered light on top-left quadrant
+    _ditherBayer(c, cx-rx, cy-ry, Math.floor(rx*1.0), Math.floor(ry*0.9),
+        P.M_FOREST, P.L_LEAF, 0.25);
+
+    // Trunk: D_BROWN 2px wide
+    const trunkX = cx - U;
+    const trunkTop = cy + Math.floor(ry * 0.7);
+    const trunkH   = Math.floor(T * 0.22);
+    c.fillStyle = P.D_BROWN;  c.fillRect(trunkX, trunkTop, U*2, trunkH);
+    c.fillStyle = P.M_CLAY;   c.fillRect(trunkX, trunkTop, 1, trunkH);    // left highlight
+
+    // Root shadow pixels
+    c.fillStyle = P.D_VOID;
+    c.fillRect(trunkX - U, trunkTop + trunkH - U, U, U);
+    c.fillRect(trunkX + U*2, trunkTop + trunkH - U, U, U);
+
+    if (v === 1) {
+        // Autumn — reddish-orange canopy overlay
+        _ditherBayer(c, cx-rx, cy-ry, rx*2, ry, P.M_FOREST, P.M_BRICK, 0.50);
+        _ditherBayer(c, cx - Math.floor(rx*0.6), cy - Math.floor(ry*0.5),
+            Math.floor(rx*1.2), Math.floor(ry*0.8), P.M_FOREST, P.A_ORANGE, 0.25);
+    }
+}
+
+
+// ── DOOR  ────────────────────────────────────────────────────────────
+// frame 0 = closed: iron-banded wood door, L_GOLD handle, D_VOID surround
+// frame 1 = open:   dark void rectangle, D_STONE threshold line at bottom
+function _drawRefDoor(c, T, frame) {
+    const P = PALETTE;
+    const U = Math.max(1, Math.floor(T / 16));
+
+    // Stone wall background with brick hint
+    c.fillStyle = P.D_STONE;
+    c.fillRect(0, 0, T, T);
+    const brickH = Math.floor(T / 3);
+    for (let row = 0; row < 3; row++) {
+        const y0 = row * brickH + 1, bh = brickH - 2;
+        c.fillStyle = P.M_STONE;  c.fillRect(0, y0, T, bh);
+        c.fillStyle = P.L_STONE;  c.fillRect(0, y0, T, 1);
+    }
+
+    const frameL = Math.floor(T*0.13), frameR = Math.floor(T*0.87);
+    const frameW = frameR - frameL;
+    const frameTop = Math.floor(T*0.05), frameBot = Math.floor(T*0.86);
+    const archH = Math.floor(T*0.10);
+    const dL = frameL + 2, dTop = frameTop + archH;
+    const dW = frameW - 4, dH = frameBot - frameTop - archH - 2;
+
+    // D_VOID door recess surround
+    c.fillStyle = P.D_VOID;
+    c.fillRect(frameL-2, frameTop, frameW+4, frameBot-frameTop);
+
+    // Arch
+    c.fillStyle = P.M_CLAY;  c.fillRect(frameL,   frameTop,   frameW,   archH);
+    c.fillStyle = P.M_STONE; c.fillRect(frameL+2, frameTop+1, frameW-4, archH-2);
+
+    if (frame === 1) {
+        // Open: void interior, D_STONE threshold
+        c.fillStyle = P.D_VOID;  c.fillRect(dL, dTop, dW, dH);
+        c.fillStyle = P.D_STONE; c.fillRect(dL, dTop+dH-U, dW, U);
+    } else {
+        // Closed: wood planks with D_BROWN iron bands
+        const plankH = Math.floor(dH / 4);
+        const plankCols = [P.S_DARK, P.M_CLAY, P.S_DARK, P.S_MID];
+        for (let i = 0; i < 4; i++) {
+            const py = dTop + i*plankH;
+            const ph = (i === 3) ? dH - 3*plankH : plankH;
+            c.fillStyle = plankCols[i]; c.fillRect(dL, py, dW, ph-1);
+            c.fillStyle = P.L_WHITE;    c.fillRect(dL, py, dW, 1);
+            c.fillStyle = P.D_BROWN;    c.fillRect(dL, py+Math.floor(ph*0.6), dW, U);  // iron band
+            c.fillStyle = P.D_VOID;
+            c.fillRect(dL+Math.floor(dW*0.33), py+1, 1, ph-2);
+            c.fillRect(dL+Math.floor(dW*0.66), py+1, 1, ph-2);
+        }
+        // Panel shadow sides
+        c.fillStyle = P.D_VOID;
+        c.fillRect(dL,      dTop, 2, dH);
+        c.fillRect(dL+dW-2, dTop, 2, dH);
+        // L_GOLD handle pixel
+        c.fillStyle = P.L_GOLD;
+        c.fillRect(dL + Math.floor(dW*0.70), dTop + Math.floor(dH*0.45), U, U*2);
+    }
+
+    // Stone threshold step
+    const stepH = Math.floor(T*0.14);
+    c.fillStyle = P.M_SAND;   c.fillRect(frameL-3, frameBot, frameW+6, stepH);
+    c.fillStyle = P.L_WHITE;  c.fillRect(frameL-3, frameBot, frameW+6, 1);
+}
+
+
+// ── STAIRS  ──────────────────────────────────────────────────────────
+// up=false: 4 descending M_STONE ledges, D_VOID shadow, D_BLUE void at bottom
+// up=true:  4 ascending ledges — L_STONE bright top, rising from M_CLAY floor
+function _drawRefStairs(c, T, up) {
+    const P = PALETTE;
+    const steps = 4;
+    const stepH = Math.floor(T / (steps + 1));
+
+    if (!up) {
+        c.fillStyle = P.D_BLUE; c.fillRect(0, 0, T, T);
+        for (let i = 0; i < steps; i++) {
+            const y = i * stepH;
+            const inset = i * Math.floor(T / (steps*2 + 1));
+            const w = T - inset*2;
+            c.fillStyle = P.M_STONE; c.fillRect(inset, y, w, stepH-1);
+            c.fillStyle = P.L_STONE; c.fillRect(inset, y, w, 1);          // bright step edge
+            c.fillStyle = P.D_VOID;  c.fillRect(inset, y+stepH-1, w, 1);  // riser shadow
+        }
+        // Bottom D_BLUE void with M_TEAL horizon line
+        c.fillStyle = P.D_BLUE;  c.fillRect(0, steps*stepH, T, T - steps*stepH);
+        c.fillStyle = P.M_TEAL;  c.fillRect(0, steps*stepH, T, 1);
+    } else {
+        c.fillStyle = P.M_CLAY; c.fillRect(0, 0, T, T);
+        for (let i = steps-1; i >= 0; i--) {
+            const y = (steps-1-i) * stepH;
+            const inset = i * Math.floor(T / (steps*2 + 1));
+            const w = T - inset*2;
+            c.fillStyle = (i === steps-1) ? P.L_STONE : P.M_STONE;
+            c.fillRect(inset, y, w, stepH-1);
+            c.fillStyle = P.L_STONE; c.fillRect(inset, y, w, 1);
+            c.fillStyle = P.D_VOID;  c.fillRect(inset, y+stepH-1, w, 1);
+        }
+        // M_CLAY landing with M_MOSS edge hint
+        c.fillStyle = P.M_CLAY; c.fillRect(0, steps*stepH, T, T - steps*stepH);
+        c.fillStyle = P.M_MOSS; c.fillRect(0, steps*stepH, T, 1);
+    }
+}
+
+
+// ── TORCH  ───────────────────────────────────────────────────────────
+// frame 0: L_GOLD core + M_BRICK outer flame pixels
+// frame 1: flame shifts 1px up, A_YELLOW tip pixel added
+// Glow halo: Bayer-dithered A_YELLOW/transparent ring (~0.22T radius, density 0.12)
+// Background painted here so it can be blitted directly over the wall tile.
+function _drawRefTorch(c, T, frame) {
+    const P = PALETTE;
+    const U = Math.max(1, Math.floor(T / 16));
+
+    // Stone wall background
+    c.fillStyle = P.D_STONE; c.fillRect(0, 0, T, T);
+    c.fillStyle = P.M_STONE; c.fillRect(U, U, T-U*2, T-U*2);
+    c.fillStyle = P.L_STONE; c.fillRect(U, U, T-U*2, 1);
+
+    // M_CLAY iron bracket
+    const bx = Math.floor(T*0.42), by = Math.floor(T*0.50);
+    const bw = Math.floor(T*0.16), bh = Math.floor(T*0.18);
+    c.fillStyle = P.M_CLAY; c.fillRect(bx, by, bw, bh);
+    c.fillStyle = P.D_VOID; c.fillRect(bx, by, bw, 1);
+
+    const fx  = Math.floor(T*0.50);
+    const fy0 = Math.floor(T*0.25) + (frame === 1 ? -1 : 0);   // 1px shift on frame 1
+
+    // Glow halo: Bayer-dithered A_YELLOW ring
+    const hr = Math.max(4, Math.floor(T*0.22));
+    _ditherBayer(c, fx-hr, fy0-hr, hr*2, hr*2, P.D_STONE, P.A_YELLOW, 0.12);
+
+    // Outer flame body: M_BRICK
+    _ellipse(c, fx, fy0, Math.floor(T*0.07), Math.floor(T*0.10), P.M_BRICK);
+    // Inner core: L_GOLD
+    _ellipse(c, fx, fy0+U, Math.floor(T*0.05), Math.floor(T*0.07), P.L_GOLD);
+
+    if (frame === 1) {
+        // A_YELLOW tip pixel 1px above flame
+        c.fillStyle = P.A_YELLOW;
+        c.fillRect(fx-U, fy0-U, U*2, U);
+    }
+}
+
+
 // ── TILE RENDERER CLASS ──────────────────────────────────────────────
 // Loads PNG sprite sheets and caches tiles at the current TS.
 // Falls back to enhanced procedural tiles when no sheet is loaded.
@@ -555,11 +904,13 @@ class TileRenderer {
     }
 
     // Warm the cache for all variants of a given row at tile size ts.
-    // Call at map load time to avoid first-frame jank.
+    // Call at map load time and after every resize to avoid first-frame jank.
+    // Falls back to 4 variants for rows not listed in SHEET_LAYOUT
+    // (e.g. 'FLOOR_LIGHT', 'FLOOR_DARK').
     warmRow(sheetRow, ts) {
         const entry = SHEET_LAYOUT.rows[sheetRow];
-        if (!entry) return;
-        for (let v = 0; v < entry.v; v++) this.draw({ drawImage() {} }, sheetRow, v, 0, 0, ts);
+        const variants = entry ? entry.v : 4;
+        for (let v = 0; v < variants; v++) this.draw({ drawImage() {} }, sheetRow, v, 0, 0, ts);
     }
 
     // ── private ──────────────────────────────────────────
@@ -581,18 +932,29 @@ class TileRenderer {
         return c;
     }
 
-    // Build enhanced procedural tile as fallback.
+    // Build enhanced procedural tile as offscreen canvas.
+    // Only called during cache warmup — never per-frame.
     _procedural(sheetRow, variant, ts) {
         const c = document.createElement('canvas');
         c.width = c.height = ts;
         const ctx = c.getContext('2d');
         ctx.imageSmoothingEnabled = false;
         switch (sheetRow) {
-            case 'GRASS':    _drawRefGrass(ctx, ts, variant);    break;
-            case 'PATH':     _drawRefPath(ctx, ts, variant);     break;
-            case 'WATER':    _drawRefWater(ctx, ts, variant);    break;
+            case 'GRASS':       _drawRefGrass(ctx, ts, variant);              break;
+            case 'PATH':        _drawRefPath(ctx, ts, variant);               break;
+            case 'WATER':       _drawRefWater(ctx, ts, variant);              break;
+            case 'WALL_EXT':    _drawRefWall(ctx, ts, variant, 'EXT');        break;
+            case 'WALL_INT':    _drawRefWall(ctx, ts, variant, 'INT');        break;
+            case 'WALL_DUN':    _drawRefWall(ctx, ts, variant, 'DUN');        break;
+            case 'CEILING':     _drawRefWall(ctx, ts, 0, 'CEILING');          break;
+            case 'FLOOR_LIGHT': _drawRefFloor(ctx, ts, variant, false);       break;
+            case 'FLOOR_DARK':  _drawRefFloor(ctx, ts, variant, true);        break;
+            case 'TREE':        _drawRefTree(ctx, ts, variant);               break;
+            case 'DOOR':        _drawRefDoor(ctx, ts, variant);               break;
+            case 'STAIRS':      _drawRefStairs(ctx, ts, variant === 1);       break;
+            case 'TORCH':       _drawRefTorch(ctx, ts, variant);              break;
             default: {
-                // Unknown row — fill with a debug checkerboard so it's obvious
+                // Unknown row — debug checkerboard so missing tiles are obvious
                 _ditherCheck(ctx, 0, 0, ts, ts, '#f0f', '#000', 0);
                 break;
             }
