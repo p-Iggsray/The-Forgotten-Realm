@@ -433,6 +433,88 @@ function _drawRefPath(c, T, v) {
 }
 
 
+// ── STONE PATH  ─────────────────────────────────────────────────────
+// Cool gray cobblestone — same 2×2 layout as PATH but with D_STONE grout
+// and M_STONE/L_STONE faces instead of warm sandy browns.
+// v=0 plain  v=1 cracked  v=2 mossy  v=3 worn
+function _drawRefStonePath(c, T, v) {
+    const P   = PALETTE;
+    const gap  = Math.max(2, Math.floor(T / 18));
+    const half = Math.floor(T / 2);
+
+    // Grout — cool near-black stone
+    c.fillStyle = P.D_STONE;
+    c.fillRect(0, 0, T, T);
+    if (v === 2) {
+        // Mossy mortar — moss creeping into grout lines
+        _ditherBayer(c, 0, half - gap, T, gap * 2, P.D_STONE, P.M_MOSS, 0.45);
+        _ditherBayer(c, half - gap, 0, gap * 2, T, P.D_STONE, P.M_MOSS, 0.45);
+    }
+
+    // Four cobble faces — alternating M_STONE / L_STONE (cooler than PATH's sandy tones)
+    const stoneCols = [P.M_STONE, P.L_STONE, P.M_STONE, P.L_STONE];
+    const origins = [
+        [gap, gap],
+        [half + gap, gap],
+        [gap, half + gap],
+        [half + gap, half + gap],
+    ];
+    origins.forEach(([ox, oy], i) => {
+        const sw = half - gap * 2, sh = half - gap * 2;
+        const sc = stoneCols[(v + i) % stoneCols.length];
+
+        // Base face
+        c.fillStyle = sc;
+        c.fillRect(ox, oy, sw, sh);
+
+        // Worn center — Bayer-dithered lighter highlight (foot traffic)
+        _ditherBayer(c,
+            ox + Math.floor(sw * 0.25), oy + Math.floor(sh * 0.25),
+            Math.floor(sw * 0.50),      Math.floor(sh * 0.50),
+            sc, P.L_STONE, 0.20);
+
+        // 2px bevel: bright top + left edges
+        c.fillStyle = P.L_STONE;
+        c.fillRect(ox,     oy,     sw, 1);
+        c.fillRect(ox,     oy,     1, sh);
+        c.fillStyle = P.M_STONE;
+        c.fillRect(ox,     oy + 1, sw, 1);
+        c.fillRect(ox + 1, oy,     1, sh);
+
+        // 2px bevel: dark bottom + right edges
+        c.fillStyle = P.D_VOID;
+        c.fillRect(ox,          oy + sh - 1, sw, 1);
+        c.fillRect(ox + sw - 1, oy,          1, sh);
+        c.fillStyle = P.D_STONE;
+        c.fillRect(ox,          oy + sh - 2, sw, 1);
+        c.fillRect(ox + sw - 2, oy,          1, sh);
+
+        // Variant details
+        if (v === 1 || v === 3) {
+            const cx0 = ox + Math.floor(sw * 0.30), cy0 = oy + Math.floor(sh * 0.30);
+            _line(c, cx0, cy0,
+                  cx0 + Math.floor(sw * 0.35), cy0 + Math.floor(sh * 0.35), P.D_VOID);
+        }
+        if (v === 2) {
+            c.fillStyle = P.M_MOSS;
+            c.fillRect(ox + sw - 2, oy + sh - 1, 2, 1);
+        }
+    });
+
+    // Mortar center intersection
+    c.fillStyle = P.D_STONE;
+    c.fillRect(half - gap, half - gap, gap * 2, gap * 2);
+    c.fillStyle = P.D_VOID;
+    c.fillRect(half - 1, half - 1, 1, 1);
+
+    // South + east edge darkening
+    const edgeSz = Math.max(1, gap);
+    c.fillStyle = P.D_VOID;
+    c.fillRect(0,            T - edgeSz, T, edgeSz);
+    c.fillRect(T - edgeSz,  0,          edgeSz, T);
+}
+
+
 // ── WATER  ──────────────────────────────────────────────────────────
 // 4-frame flip-book. Each frame built once and cached.
 //
@@ -942,6 +1024,7 @@ class TileRenderer {
         switch (sheetRow) {
             case 'GRASS':       _drawRefGrass(ctx, ts, variant);              break;
             case 'PATH':        _drawRefPath(ctx, ts, variant);               break;
+            case 'STONE_PATH':  _drawRefStonePath(ctx, ts, variant);         break;
             case 'WATER':       _drawRefWater(ctx, ts, variant);              break;
             case 'WALL_EXT':    _drawRefWall(ctx, ts, variant, 'EXT');        break;
             case 'WALL_INT':    _drawRefWall(ctx, ts, variant, 'INT');        break;

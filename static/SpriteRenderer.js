@@ -27,7 +27,7 @@ class SpriteRenderer {
     // Call after every resize and at startup.
     warmCache(ts) {
         const rows = [
-            'GRASS', 'PATH', 'WATER',
+            'GRASS', 'PATH', 'STONE_PATH', 'WATER',
             'WALL_EXT', 'WALL_INT', 'WALL_DUN', 'CEILING',
             'FLOOR_LIGHT', 'FLOOR_DARK',
             'TREE', 'DOOR', 'STAIRS', 'TORCH',
@@ -91,9 +91,13 @@ class SpriteRenderer {
                 break;
             }
 
-            case TILE.DIRT_PATH:
-            case TILE.STONE_PATH: {
+            case TILE.DIRT_PATH: {
                 tileRenderer.draw(ctx, 'PATH', raw & 3, ipx, ipy, TS);
+                break;
+            }
+
+            case TILE.STONE_PATH: {
+                tileRenderer.draw(ctx, 'STONE_PATH', raw & 3, ipx, ipy, TS);
                 break;
             }
 
