@@ -3,13 +3,34 @@
 // ═══════════════════════════════════════════════════════
 //  TILE DEFINITIONS
 // ═══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════
+//  RENDER TRACE  (map array → canvas output)
+//
+//  1. map.tiles[ty][tx]          → integer tile ID (one of TILE.*)
+//  2. drawTile(tile, px, py, tx, ty)  → called from rebuildBgCanvas()
+//                                       and drawAnimatedTiles() each frame
+//  3. switch(tile) in drawTile() → selects draw function or _tc blit
+//  4. _tc['g0'..'g7']            → ctx.drawImage(offscreen canvas, ...)
+//     drawWater / drawDoor etc.  → direct ctx.fill* / ctx.arc calls
+//  5. Canvas output              → bgCanvas (static) + main ctx (animated)
+// ══════════════════════════════════════════════════════════════════════
 const TILE = Object.freeze({
-    GRASS:0, PATH:1, FLOOR:2, WALL:3,
-    TREE:4, WATER:5, DOOR:6, STAIRS:7, SIGN:8,
-    STAIRSUP:9, TORCH:10,
+    GRASS:          0,   // rich dark green ground
+    DIRT_PATH:      1,   // warm sandy brown secondary paths
+    BUILDING_FLOOR: 2,   // worn wood plank interior floor
+    BUILDING_WALL:  3,   // dark stone brick facade
+    TREE:           4,   // deep forest canopy
+    WATER:          5,   // deep navy/teal animated water
+    DOOR:           6,   // building entrance (interactive)
+    STAIRS:         7,   // descent to dungeon
+    SIGN:           8,   // interactive sign post
+    STAIRSUP:       9,   // ascent / interior exit
+    TORCH:          10,  // wall torch (animated)
+    STONE_PATH:     11,  // cool gray cobblestone main roads
+    VOID:           12,  // null / empty — pure black
 });
 const WALKABLE = new Set([
-    TILE.GRASS, TILE.PATH, TILE.FLOOR,
+    TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.BUILDING_FLOOR,
     TILE.DOOR, TILE.STAIRS, TILE.STAIRSUP,
 ]);
 // Tiles that animate every frame and must bypass the bg cache.
@@ -115,9 +136,9 @@ const ENEMY_DEFS = {
         desc:'A massive stone-skinned predator.',
     },
 };
-const { GRASS:G, PATH:P, FLOOR:F, WALL:W, TREE:TR,
+const { GRASS:G, DIRT_PATH:P, BUILDING_FLOOR:F, BUILDING_WALL:W, TREE:TR,
         WATER:WA, DOOR:DR, STAIRS:ST, SIGN:SG,
-        STAIRSUP:SU, TORCH:TC } = TILE;
+        STAIRSUP:SU, TORCH:TC, STONE_PATH:SP, VOID:VD } = TILE;
 
 // ═══════════════════════════════════════════════════════
 //  BIOME NOISE HELPERS
@@ -497,10 +518,10 @@ function buildVillageTiles() {
     _placeVillageTransition(m, _biome, W_, H_, _rng(551));
 
     // ── 2. Main roads ────────────────────────────────────────
-    // N–S spine x=21,22; E–W spine y=16,17
-    // All buildings stay clear of these columns/rows.
-    fill(21,1,22,34, P);
-    fill(1,16,46,17, P);
+    // N–S spine x=21,22; E–W spine y=16,17 → stone-paved main roads
+    // Secondary building connectors stay as DIRT_PATH (P)
+    fill(21,1,22,34, SP);
+    fill(1,16,46,17, SP);
 
     // ── 4. Pond (NW decorative water feature) ────────────────
     //  Water: x=13–19, y=3–12  (safely west of N–S road x=21)
@@ -1859,6 +1880,60 @@ function _buildTileCache() {
         _tc[`tr${v}`] = can;
     }
 
+    // ── STONE_PATH  4 variants — cool gray cobblestone, dark grout ──
+    // sp0–sp3 drawn by drawTile() case TILE.STONE_PATH.
+    // Individual stones slightly offset; cool grays + D_VOID grout.
+    for (let v = 0; v < 4; v++) {
+        const can = _mkTile(), c = can.getContext('2d');
+        const rng = _rng(v * 43 + 200);
+        const gap = Math.max(1, Math.floor(T/18)), half = Math.floor(T/2);
+        // Grout base — cool dark gray
+        c.fillStyle = P.D_STONE; c.fillRect(0, 0, T, T);
+        const stoneCols = [P.M_STONE, P.L_STONE, P.M_SLATE, P.M_STONE];
+        const sc = stoneCols[v];
+        // 4 stones with slight random sub-pixel offsets for organic cobblestone look
+        const offsets = [
+            [gap + Math.floor(rng()*gap),       gap + Math.floor(rng()*gap)       ],
+            [half + gap + Math.floor(rng()*gap), gap + Math.floor(rng()*gap)       ],
+            [gap + Math.floor(rng()*gap),        half + gap + Math.floor(rng()*gap)],
+            [half + gap + Math.floor(rng()*gap), half + gap + Math.floor(rng()*gap)],
+        ];
+        offsets.forEach(([ox, oy]) => {
+            const sw = Math.max(2, half - gap*2), sh = Math.max(2, half - gap*2);
+            // Stone face
+            c.fillStyle = sc; c.fillRect(ox, oy, sw, sh);
+            // Subtle worn center via Bayer dither
+            if (sw > 4 && sh > 4) {
+                _db(c, ox+Math.floor(sw*.25), oy+Math.floor(sh*.25),
+                    Math.floor(sw*.50), Math.floor(sh*.50), sc, P.L_STONE, 0.15);
+            }
+            // Cool highlight (top + left)
+            c.fillStyle = P.L_STONE; c.fillRect(ox, oy, sw, 1);
+            c.fillStyle = P.M_STONE; c.fillRect(ox, oy, 1, sh);
+            // Dark grout shadow (bottom + right)
+            c.fillStyle = P.D_VOID;  c.fillRect(ox, oy+sh-1, sw, 1);
+            c.fillStyle = P.D_STONE; c.fillRect(ox+sw-1, oy, 1, sh);
+        });
+        // v=1/3: pebble in grout line; v=2: aged moss fleck
+        if (v === 1 || v === 3) {
+            c.fillStyle = P.M_STONE;
+            c.fillRect(Math.floor(rng()*(T-2))+1, Math.floor(rng()*(T-2))+1, 2, 1);
+        }
+        if (v === 2) {
+            c.fillStyle = P.M_MOSS;
+            for (let i = 0; i < 3; i++)
+                c.fillRect(Math.floor(rng()*gap*2), Math.floor(rng()*T), 1, 1);
+        }
+        _tc[`sp${v}`] = can;
+    }
+
+    // ── VOID — pure black null tile ───────────────────────────────
+    {
+        const can = _mkTile(), c = can.getContext('2d');
+        c.fillStyle = P.D_VOID; c.fillRect(0, 0, T, T);
+        _tc['vd'] = can;
+    }
+
     // ── CEILING  4 variants (interior top-row overhead) ──────
     // Rendered when tile===WALL && returnMap && !dark && ty===0
     // Dark stone dither base + wooden crossbeam strip
@@ -2078,55 +2153,48 @@ function buildVariantMap(map) {
                         break;
                     }
 
-                    case TILE.PATH: {
-                        // Topology-aware road detection:
-                        //   Directional road sprites where segments connect;
-                        //   plain dirt_center for isolated village ground.
-                        const pN = T(-1,  0) === TILE.PATH;
-                        const pE = T( 0, +1) === TILE.PATH;
-                        const pS = T(+1,  0) === TILE.PATH;
-                        const pW = T( 0, -1) === TILE.PATH;
+                    case TILE.DIRT_PATH: {
+                        // Topology-aware road detection: path segments connect visually.
+                        const _isP = t => t === TILE.DIRT_PATH || t === TILE.STONE_PATH;
+                        const pN = _isP(T(-1, 0));
+                        const pE = _isP(T( 0,+1));
+                        const pS = _isP(T(+1, 0));
+                        const pW = _isP(T( 0,-1));
                         const axisV = pN || pS;
                         const axisH = pE || pW;
-                        if      (axisV && axisH) v = 0; // dirt_path_cross  (intersection)
-                        else if (axisV)           v = 3; // dirt_path_v      (N–S segment)
-                        else if (axisH)           v = 2; // dirt_path_h      (E–W segment)
-                        else                      v = 1; // dirt_center      (open ground)
+                        if      (axisV && axisH) v = 0; // cross intersection
+                        else if (axisV)           v = 3; // N–S segment
+                        else if (axisH)           v = 2; // E–W segment
+                        else                      v = 1; // isolated patch
                         break;
                     }
 
-                    case TILE.WALL: {
-                        // Position-aware building facade encoding.
-                        // The 4 variants map to facade regions so SpriteRenderer
-                        // can pick a different sprite for each part of the building:
-                        //
-                        //   v=0  roof     — no solid wall tile to the north
-                        //                   → orange roof tile, visually caps the top
-                        //   v=1  body     — wall tiles on all four sides
-                        //                   → warm tan/ochre wall face
-                        //   v=2  r-border — no solid wall tile to the east
-                        //                   → dark-border tile, draws the right outline
-                        //   v=3  shadow   — no solid wall tile to the south
-                        //                   → darker foundation tile, depth on south face
-                        //
-                        // DOOR tiles count as "solid" neighbours so the row above a
-                        // door arch does not incorrectly receive the shadow variant.
-                        const solid = t => t === TILE.WALL || t === TILE.DOOR;
+                    case TILE.STONE_PATH: {
+                        v = (tx * 11 + ty * 7) & 3; // hash-based cobblestone variant
+                        break;
+                    }
+
+                    case TILE.BUILDING_WALL: {
+                        // Position-aware facade encoding.
+                        //   v=0 roof    — no solid wall to north
+                        //   v=1 body    — surrounded on all sides
+                        //   v=2 r-edge  — no solid wall to east
+                        //   v=3 shadow  — no solid wall to south
+                        const solid = t => t === TILE.BUILDING_WALL || t === TILE.DOOR;
                         const wN = solid(T(-1,  0));
                         const wS = solid(T(+1,  0));
                         const wE = solid(T( 0, +1));
-                        if      (!wN) v = 0;  // top row   → roof
-                        else if (!wS) v = 3;  // bottom row → shadow/foundation
-                        else if (!wE) v = 2;  // right col  → dark outline
-                        else          v = 1;  // interior   → wall body
+                        if      (!wN) v = 0;
+                        else if (!wS) v = 3;
+                        else if (!wE) v = 2;
+                        else          v = 1;
                         break;
                     }
 
                     default: {
-                        // FLOOR, SIGN, etc. — hash arithmetic
                         switch (tile) {
-                            case TILE.FLOOR: v = (tx * 5  + ty * 17) & 3; break;
-                            default:         v = 0;                        break;
+                            case TILE.BUILDING_FLOOR: v = (tx * 5 + ty * 17) & 3; break;
+                            default:                  v = 0;                       break;
                         }
                     }
                 }
@@ -2134,12 +2202,13 @@ function buildVariantMap(map) {
             } else {
                 // ── Hash fallback (dungeon / interior maps) ──────────
                 switch (tile) {
-                    case TILE.GRASS:  v = (tx * 7  + ty * 13) & 7;                                    break;
-                    case TILE.TREE:   v = ((tx * 7 + ty * 13) & 7) | (((tx * 5 + ty * 9) & 3) << 4); break;
-                    case TILE.PATH:   v = (tx * 11 + ty * 7)  & 3;                                    break;
-                    case TILE.FLOOR:  v = (tx * 5  + ty * 17) & 3;                                    break;
-                    case TILE.WALL:   v = (tx * 3  + ty * 11) & 3;                                    break;
-                    default:          v = 0;                                                            break;
+                    case TILE.GRASS:          v = (tx * 7  + ty * 13) & 7;                                    break;
+                    case TILE.TREE:           v = ((tx * 7 + ty * 13) & 7) | (((tx * 5 + ty * 9) & 3) << 4); break;
+                    case TILE.DIRT_PATH:      v = (tx * 11 + ty * 7)  & 3;                                    break;
+                    case TILE.STONE_PATH:     v = (tx * 11 + ty * 7)  & 3;                                    break;
+                    case TILE.BUILDING_FLOOR: v = (tx * 5  + ty * 17) & 3;                                    break;
+                    case TILE.BUILDING_WALL:  v = (tx * 3  + ty * 11) & 3;                                    break;
+                    default:                  v = 0;                                                           break;
                 }
             }
 
@@ -2209,10 +2278,10 @@ function rebuildBgCanvas() {
     if (!currentMap.returnMap && !currentMap.dark) {
         const outlineW = Math.max(2, Math.round(TS * 0.10)); // ≈10 % of tile
         bgCtx.fillStyle = 'rgba(10,8,18,0.85)';
-        const solid = t => t === TILE.WALL || t === TILE.DOOR;
+        const solid = t => t === TILE.BUILDING_WALL || t === TILE.DOOR;
         for (let ty = sty; ty <= ety; ty++) {
             for (let tx = stx; tx <= etx; tx++) {
-                if (currentMap.tiles[ty][tx] !== TILE.WALL) continue;
+                if (currentMap.tiles[ty][tx] !== TILE.BUILDING_WALL) continue;
                 const bpx = Math.round((tx - stx) * TS + BUF);
                 const bpy = Math.round((ty - sty) * TS + BUF);
                 // North border
@@ -2307,70 +2376,73 @@ function drawAnimatedTiles() {
 //  TILE RENDERING
 // ═══════════════════════════════════════════════════════
 function drawTile(tile, px, py, tx, ty) {
-    // ── Sprite-sheet path (SpriteRenderer ready) ──────────────────────────────
-    // When SpriteRenderer has finished loading all required core tile sheets,
-    // delegate entirely to it. It handles every tile type and falls back to the
-    // procedural _tc cache internally if a specific sheet failed to load.
-    if (typeof spriteRenderer !== 'undefined' && spriteRenderer.isReady()) {
-        const mapCtx = {
-            dark:       currentMap.dark,
-            isInterior: !!(currentMap.returnMap),
-            isCeiling:  !!(currentMap.returnMap && ty === 0),
-        };
-        spriteRenderer.drawTile(ctx, tile, px, py, tx, ty, mapCtx);
-        return;
-    }
-
-    // ── Procedural fallback (sprites not yet loaded) ──────────────────────────
+    // ── Fully procedural — no sprite sheets, no image file loading ────────────
+    // Render trace: map.tiles[ty][tx] → tile ID → this switch → _tc blit or
+    // direct ctx primitives → bgCanvas (static) / main ctx (animated overlay)
     ensureTileCache();
     const dark = currentMap.dark;
     const ipx = Math.floor(px), ipy = Math.floor(py);
-    const S1 = TS + 1; // draw 1px over to close sub-pixel seams
+    const S1 = TS + 1; // 1px over to close sub-pixel seams
+    // Helper: is a tile ID a path-type (used for grass autotile blending)
+    const _isPath = t => t === TILE.DIRT_PATH || t === TILE.STONE_PATH;
     switch (tile) {
         case TILE.GRASS: {
-            const _gv = currentMap.variantMap ? currentMap.variantMap[ty * currentMap.w + tx] & 7 : (tx*7+ty*13)&7;
+            const _gv = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx] & 7
+                : (tx*7+ty*13)&7;
             ctx.drawImage(_tc[`g${_gv}`], ipx, ipy, S1, S1);
             // Autotile edge blending: dithered strip at grass→path/water borders
             const sw = Math.max(4, Math.floor(TS/8));
             const blendNeighbors = [[tx,ty-1,0],[tx,ty+1,1],[tx-1,ty,2],[tx+1,ty,3]];
             for (const [ntx,nty,dir] of blendNeighbors) {
                 const nt = currentMap.tiles[nty]?.[ntx];
-                if (nt!==TILE.PATH && nt!==TILE.WATER) continue;
+                if (!_isPath(nt) && nt!==TILE.WATER) continue;
                 const bCol = nt===TILE.WATER ? PALETTE.M_SLATE : PALETTE.M_CLAY;
                 if (dir===0) dither2(ctx, ipx, ipy,           TS, sw, PALETTE.M_FOREST, bCol, 0);
                 if (dir===1) dither2(ctx, ipx, ipy+TS-sw,     TS, sw, PALETTE.M_FOREST, bCol, 1);
                 if (dir===2) dither2(ctx, ipx, ipy,           sw, TS, PALETTE.M_FOREST, bCol, 0);
                 if (dir===3) dither2(ctx, ipx+TS-sw, ipy,     sw, TS, PALETTE.M_FOREST, bCol, 1);
             }
-            // Diagonal corner fills — inline (no array allocs), fills the bare notch at
-            // convex corners where two cardinal blend strips would otherwise hard-cut.
+            // Diagonal corner fills at convex path corners
             for (let ci = 0; ci < 4; ci++) {
                 const dnx = ci < 2 ? tx+1 : tx-1;
                 const dny = (ci===0||ci===2) ? ty-1 : ty+1;
                 const dt  = currentMap.tiles[dny]?.[dnx];
-                if (dt!==TILE.PATH && dt!==TILE.WATER) continue;
-                // Skip if either adjacent cardinal already handles this corner
-                const a1t = currentMap.tiles[dny]?.[tx];   // N or S of current
-                const a2t = currentMap.tiles[ty ]?.[dnx];  // E or W of current
-                if ((a1t===TILE.PATH||a1t===TILE.WATER)||(a2t===TILE.PATH||a2t===TILE.WATER)) continue;
+                if (!_isPath(dt) && dt!==TILE.WATER) continue;
+                const a1t = currentMap.tiles[dny]?.[tx];
+                const a2t = currentMap.tiles[ty ]?.[dnx];
+                if ((_isPath(a1t)||a1t===TILE.WATER)||(_isPath(a2t)||a2t===TILE.WATER)) continue;
                 const bCol = dt===TILE.WATER ? PALETTE.M_SLATE : PALETTE.M_CLAY;
                 dither2(ctx, ipx+(dnx>tx?TS-sw:0), ipy+(dny>ty?TS-sw:0), sw, sw, PALETTE.M_FOREST, bCol, 0);
             }
             break;
         }
-        case TILE.PATH: {
-            const _pv = currentMap.variantMap ? currentMap.variantMap[ty * currentMap.w + tx] & 3 : (tx*11+ty*7)&3;
+        case TILE.DIRT_PATH: {
+            const _pv = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx] & 3
+                : (tx*11+ty*7)&3;
             ctx.drawImage(_tc[`p${_pv}`], ipx, ipy, S1, S1);
             break;
         }
-        case TILE.FLOOR: {
-            const v = currentMap.variantMap ? currentMap.variantMap[ty * currentMap.w + tx] & 3 : (tx*5+ty*17)&3;
+        case TILE.STONE_PATH: {
+            const _sv = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx] & 3
+                : (tx*11+ty*7)&3;
+            ctx.drawImage(_tc[`sp${_sv}`], ipx, ipy, S1, S1);
+            break;
+        }
+        case TILE.BUILDING_FLOOR: {
+            const v = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx] & 3
+                : (tx*5+ty*17)&3;
             ctx.drawImage(_tc[dark?`fd${v}`:`fl${v}`], ipx, ipy, S1, S1);
             break;
         }
-        case TILE.WALL: {
-            const v = currentMap.variantMap ? currentMap.variantMap[ty * currentMap.w + tx] & 3 : (tx*3+ty*11)&3;
-            // Ceiling: interior top row gets overhead beam tile instead of wall face
+        case TILE.BUILDING_WALL: {
+            const v = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx] & 3
+                : (tx*3+ty*11)&3;
+            // Ceiling: interior top row → overhead beam tile
             if (!dark && currentMap.returnMap && ty === 0) {
                 ctx.drawImage(_tc[`ceil${v}`], ipx, ipy, S1, S1);
                 break;
@@ -2380,39 +2452,42 @@ function drawTile(tile, px, py, tx, ty) {
             break;
         }
         case TILE.TREE: {
-            const _pk = currentMap.variantMap ? currentMap.variantMap[ty * currentMap.w + tx] : ((tx*7+ty*13)&7)|(((tx*5+ty*9)&3)<<4);
+            const _pk = currentMap.variantMap
+                ? currentMap.variantMap[ty * currentMap.w + tx]
+                : ((tx*7+ty*13)&7)|(((tx*5+ty*9)&3)<<4);
             const gv = _pk & 7, tv = (_pk >> 4) & 3;
             ctx.drawImage(_tc[`g${gv}`], ipx, ipy, S1, S1);
             ctx.drawImage(_tc[`tr${tv}`], ipx, ipy, S1, S1);
             break;
         }
-        case TILE.WATER:    drawWater(px,py);        break;
-        case TILE.DOOR:     drawDoor(px,py,tx,ty); break;
-        case TILE.STAIRS:   drawStairs(px,py);   break;
-        case TILE.STAIRSUP: drawStairsUp(px,py); break;
+        case TILE.WATER:    drawWater(px,py);       break;
+        case TILE.DOOR:     drawDoor(px,py,tx,ty);  break;
+        case TILE.STAIRS:   drawStairs(px,py);       break;
+        case TILE.STAIRSUP: drawStairsUp(px,py);    break;
+        case TILE.VOID:     drawVoid(px,py);         break;
         case TILE.SIGN: {
             const snb = [
                 currentMap.tiles[ty]?.[tx-1], currentMap.tiles[ty]?.[tx+1],
                 currentMap.tiles[ty-1]?.[tx],  currentMap.tiles[ty+1]?.[tx],
             ];
-            const onWall = snb.some(t=>t===TILE.WALL);
+            const onWall = snb.some(t => t === TILE.BUILDING_WALL);
             if (dark || onWall) {
                 const sv = (tx*3+ty*11)&3;
                 const swk = dark ? `wd${sv}` : currentMap.returnMap ? `win${sv}` : `wex${sv}`;
                 ctx.drawImage(_tc[dark?`fd${(tx*5+ty*17)&3}`:swk], ipx, ipy, S1, S1);
-            } else if (snb.some(t=>t===TILE.FLOOR)) {
+            } else if (snb.some(t => t === TILE.BUILDING_FLOOR)) {
                 ctx.drawImage(_tc[`fl${(tx*5+ty*17)&3}`], ipx, ipy, S1, S1);
-            } else if (snb.some(t=>t===TILE.PATH)) {
-                ctx.drawImage(_tc[`p${(tx*11+ty*7)&3}`],  ipx, ipy, S1, S1);
+            } else if (snb.some(t => _isPath(t))) {
+                ctx.drawImage(_tc[`p${(tx*11+ty*7)&3}`], ipx, ipy, S1, S1);
             } else {
-                ctx.drawImage(_tc[`g${(tx*7+ty*13)&7}`],  ipx, ipy, S1, S1);
+                ctx.drawImage(_tc[`g${(tx*7+ty*13)&7}`], ipx, ipy, S1, S1);
             }
             if (onWall) drawWallPlaque(px, py);
-            else        drawSignPost(px,py);
+            else        drawSignPost(px, py);
             break;
         }
-        case TILE.TORCH:    drawTorch(px,py,tx,ty); break;
-        default: ctx.fillStyle='#000'; ctx.fillRect(ipx,ipy,TS,TS);
+        case TILE.TORCH: drawTorch(px,py,tx,ty); break;
+        default: ctx.fillStyle = PALETTE.D_VOID; ctx.fillRect(ipx, ipy, TS, TS);
     }
 }
 
@@ -2445,18 +2520,18 @@ function drawGrass(px, py, tx, ty) {
     }
 }
 
-// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
-function drawPath(px, py, tx, ty) {
+// DIRT_PATH — warm sandy brown, uneven edge shading, occasional pebble dots
+function drawDirtPath(px, py, tx, ty) {
     const P = PALETTE;
     const s = tx*11 + ty*7;
     const gap = Math.max(1, Math.floor(TS/20));
     const half = Math.floor(TS/2);
     const ipx = Math.floor(px), ipy = Math.floor(py);
-    // Mortar base (M_CLAY)
+    // Sandy mortar base
     ctx.fillStyle = P.M_CLAY;
     ctx.fillRect(ipx, ipy, TS, TS);
-    // 4 cobblestones — aged worn stone (M_STONE, L_STONE, M_SAND)
-    const stoneCols = [P.M_STONE, P.L_STONE, P.M_SAND, P.M_STONE];
+    // Warm sandy paving stones with L_PARCH top highlight and D_STONE shadow
+    const stoneCols = [P.M_SAND, P.L_PARCH, P.M_CLAY, P.M_SAND];
     const offsets = [[gap, gap],[half+gap, gap],[gap, half+gap],[half+gap, half+gap]];
     offsets.forEach(([ox, oy], i) => {
         const sx = ipx + ox, sy = ipy + oy;
@@ -2464,10 +2539,54 @@ function drawPath(px, py, tx, ty) {
         ctx.fillStyle = stoneCols[(s+i) % stoneCols.length];
         ctx.fillRect(sx, sy, sw, sh);
         ctx.fillStyle = P.L_PARCH;
-        ctx.fillRect(sx, sy, sw, 1);        // top highlight (L_PARCH)
-        ctx.fillStyle = P.D_STONE;
-        ctx.fillRect(sx, sy+sh-1, sw, 1);  // bottom shadow (D_STONE)
+        ctx.fillRect(sx, sy, sw, 1);
+        ctx.fillStyle = P.D_BROWN;
+        ctx.fillRect(sx, sy+sh-1, sw, 1);
     });
+    // Pebble dots on 1 in 4 tiles
+    if (s % 4 === 0) {
+        ctx.fillStyle = P.M_STONE;
+        ctx.fillRect(ipx + ((s*7)%13)*Math.max(1,Math.floor(TS/16)),
+                     ipy + ((s*11+3)%11)*Math.max(1,Math.floor(TS/16)), 2, 1);
+    }
+}
+
+// STONE_PATH — cool gray cobblestone, individual stones with dark grout lines
+function drawStonePath(px, py, tx, ty) {
+    const P = PALETTE;
+    const s = tx*13 + ty*11;
+    const gap = Math.max(1, Math.floor(TS/18));
+    const half = Math.floor(TS/2);
+    const ipx = Math.floor(px), ipy = Math.floor(py);
+    // Cool dark gray grout base
+    ctx.fillStyle = P.D_STONE;
+    ctx.fillRect(ipx, ipy, TS, TS);
+    // Cobblestones — cool grays with slight offset for organic feel
+    const rng = _rng(s * 17 + 3);
+    const stoneCols = [P.M_STONE, P.L_STONE, P.M_SLATE, P.M_STONE];
+    const offsets = [
+        [gap + Math.floor(rng()*gap),       gap + Math.floor(rng()*gap)       ],
+        [half + gap + Math.floor(rng()*gap), gap + Math.floor(rng()*gap)       ],
+        [gap + Math.floor(rng()*gap),        half + gap + Math.floor(rng()*gap)],
+        [half + gap + Math.floor(rng()*gap), half + gap + Math.floor(rng()*gap)],
+    ];
+    offsets.forEach(([ox, oy], i) => {
+        const sw = Math.max(2, half - gap*2), sh = Math.max(2, half - gap*2);
+        ctx.fillStyle = stoneCols[(s+i) % stoneCols.length];
+        ctx.fillRect(ipx+ox, ipy+oy, sw, sh);
+        // Cool highlight top-left corner
+        ctx.fillStyle = P.L_STONE; ctx.fillRect(ipx+ox, ipy+oy, sw, 1);
+        ctx.fillStyle = P.M_STONE; ctx.fillRect(ipx+ox, ipy+oy, 1, sh);
+        // Dark grout shadow bottom-right
+        ctx.fillStyle = P.D_VOID;  ctx.fillRect(ipx+ox, ipy+oy+sh-1, sw, 1);
+        ctx.fillStyle = P.D_STONE; ctx.fillRect(ipx+ox+sw-1, ipy+oy, 1, sh);
+    });
+}
+
+// VOID — pure black null tile
+function drawVoid(px, py) {
+    ctx.fillStyle = PALETTE.D_VOID;
+    ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
 }
 
 // [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
@@ -4639,7 +4758,7 @@ function placeStarterWeapon(charClass) {
                      questRequired:'quest_weapon_given',
                      questComplete:'quest_weapon_complete' };
     const sx = currentMap.playerStart.x, sy = currentMap.playerStart.y;
-    const walkable = new Set([TILE.GRASS, TILE.PATH]);
+    const walkable = new Set([TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH]);
     // Try random positions in a ring of radius 4–10 around start
     for (let attempt = 0; attempt < 60; attempt++) {
         const angle = Math.random() * Math.PI * 2;

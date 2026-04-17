@@ -90,15 +90,6 @@ PERSONALITY: A villager of Eldoria — nervous, weathered by recent dark events,
 hopeful. Friendly enough, but distracted. Might share rumors or small observations about the village.
 """
 
-@app.route("/assets/<path:filename>")
-def serve_assets(filename):
-    return send_from_directory(os.path.join(os.path.dirname(__file__), "assets"), filename)
-
-@app.route("/sprite_atlas.json")
-def serve_atlas():
-    return send_from_directory(os.path.dirname(__file__), "sprite_atlas.json")
-
-
 @app.route("/")
 def index():
     return render_template("index.html")
