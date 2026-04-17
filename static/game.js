@@ -24,72 +24,78 @@ const ANIMATED_TILES = new Set([TILE.WATER, TILE.TORCH]);
 // ═══════════════════════════════════════════════════════
 const PALETTE = Object.freeze({
     // ── DARKS (5) ────────────────────────────────────────
-    D_VOID:    '#080408',  // 01 absolute black / void
-    D_BROWN:   '#2a1408',  // 02 shadow brown (trunk, deep shadow)
-    D_BLUE:    '#18182a',  // 03 dark gray-blue (dungeon void)
-    D_STONE:   '#1e1c18',  // 04 dark stone gray (ceiling, rock)
-    D_GREEN:   '#1a4008',  // 05 darkest canopy green (tree outer)
+    D_VOID:    '#04030a',  // 01 deeper void black
+    D_BROWN:   '#1a0c04',  // 02 very dark bark
+    D_BLUE:    '#0c0c1e',  // 03 deep dungeon void
+    D_STONE:   '#141210',  // 04 near-black stone
+    D_GREEN:   '#0c2804',  // 05 darkest canopy green
 
     // ── MIDS (8) ─────────────────────────────────────────
-    M_STONE:   '#686860',  // 06 mid stone gray (exterior wall face)
-    M_CLAY:    '#8a5a28',  // 07 clay brown (floor, path mortar)
-    M_MOSS:    '#4a7030',  // 08 moss green (mid grass, tile details)
-    M_TEAL:    '#2a4840',  // 09 dungeon teal (dungeon ambient)
-    M_SLATE:   '#3a4868',  // 10 slate blue (shadow stone, deep water)
-    M_BRICK:   '#8a3020',  // 11 brick red (accent, timing zone)
-    M_SAND:    '#c8a060',  // 12 sand / tan (path stone, dry grass)
-    M_FOREST:  '#3a6820',  // 13 forest green (grass base, tree mid)
+    M_STONE:   '#3a3830',  // 06 aged dark stone
+    M_CLAY:    '#4a3018',  // 07 dark earth mortar
+    M_MOSS:    '#2a4818',  // 08 deep moss
+    M_TEAL:    '#162820',  // 09 dark dungeon teal
+    M_SLATE:   '#1e2840',  // 10 deep slate
+    M_BRICK:   '#5a1a10',  // 11 dark aged brick
+    M_SAND:    '#7a6030',  // 12 aged dirt path
+    M_FOREST:  '#1e4010',  // 13 deep forest base
 
     // ── LIGHTS (7) ───────────────────────────────────────
-    L_STONE:   '#c8c0a0',  // 14 light stone (cobble highlight, beam top)
-    L_PARCH:   '#d4b896',  // 15 parchment (sign board, light plank)
-    L_GOLD:    '#d4a030',  // 16 gold (UI, treasure, class Warrior)
-    L_BLUE:    '#90a8c8',  // 17 pale blue (water highlight, Wizard)
-    L_WHITE:   '#f0e8d0',  // 18 warm white (specular pixel, flame tip)
-    L_LEAF:    '#58c830',  // 19 bright leaf green (grass highlight)
-    L_WATER:   '#48b8d0',  // 20 water cyan (shimmer, water surface)
+    L_STONE:   '#786850',  // 14 torchlit stone highlight
+    L_PARCH:   '#8a6840',  // 15 aged parchment
+    L_GOLD:    '#c07818',  // 16 dim gold
+    L_BLUE:    '#4a6878',  // 17 muted pale blue
+    L_WHITE:   '#d4c8a0',  // 18 warm candlelight white
+    L_LEAF:    '#387820',  // 19 muted leaf green
+    L_WATER:   '#2878a0',  // 20 deep dark water
 
     // ── ACCENTS (6) ──────────────────────────────────────
-    A_RED:     '#e02828',  // 21 danger red (HP crit, flame core)
-    A_ORANGE:  '#e86010',  // 22 fire orange (torch, flame)
-    A_YELLOW:  '#f0d020',  // 23 bright yellow (crit hit, Cleric)
-    A_PURPLE:  '#9030d0',  // 24 magic purple (Shade, Rogue)
-    A_GHOST:   '#90c8f0',  // 25 ghost blue-white (spirit, ice)
-    A_RARE:    '#e050a0',  // 26 rare pink (flowers, lily, rare items)
+    A_RED:     '#b01818',  // 21 blood red
+    A_ORANGE:  '#c04008',  // 22 deep ember orange
+    A_YELLOW:  '#c09010',  // 23 dim lantern yellow
+    A_PURPLE:  '#6020a8',  // 24 deep arcane purple
+    A_GHOST:   '#607898',  // 25 muted ghost blue
+    A_RARE:    '#903070',  // 26 dark rare magenta
 
     // ── SKIN / FLESH (3) ─────────────────────────────────
-    S_PALE:    '#f0c890',  // 27 pale skin
-    S_MID:     '#c88850',  // 28 mid skin / medium wood plank
-    S_DARK:    '#8a5030',  // 29 dark skin / dark wood plank
+    S_PALE:    '#c8a070',  // 27 weathered skin
+    S_MID:     '#9a6030',  // 28 dark wood mid
+    S_DARK:    '#5a2c10',  // 29 dark wood deep
 
     // ── UI (3) ───────────────────────────────────────────
     U_BG:      '#0e0a0c',  // 30 UI panel background
     U_GOLD:    '#c8901a',  // 31 UI border gold
     U_TEXT:    '#e8dcc8',  // 32 UI text cream
 
+    // ── MOODY ADDITIONS ──────────────────────────────────
+    M_ARCANE:  '#2a1848',  // deep arcane purple-black (magic ambience)
+    M_AMBER:   '#6a3808',  // torchlight amber (warm glow base)
+    L_AMBER:   '#d08020',  // bright torchlight (flame highlight)
+    M_LICHEN:  '#1e3010',  // lichen dark green (aged stone surface)
+
     // ── SEMANTIC ALIASES (all resolve to values above) ───
-    MAP_DARK_BG:   '#080408',  // = D_VOID
-    HP_FULL:       '#58c830',  // = L_LEAF
-    HP_MID:        '#d4a030',  // = L_GOLD
-    HP_LOW:        '#e02828',  // = A_RED
-    HP_BG:         '#080408',  // = D_VOID
-    XP_FILL:       '#3a4868',  // = M_SLATE
-    SHADE_BODY:    '#9030d0',  // = A_PURPLE
-    SHADE_EYE:     '#e02828',  // = A_RED
-    LURKER_BODY:   '#8a5a28',  // = M_CLAY
-    LURKER_EYE:    '#e86010',  // = A_ORANGE
-    CLASS_WARRIOR: '#d4a030',  // = L_GOLD
-    CLASS_ROGUE:   '#9030d0',  // = A_PURPLE
-    CLASS_WIZARD:  '#90a8c8',  // = L_BLUE
-    CLASS_CLERIC:  '#f0d020',  // = A_YELLOW
-    CLOAK_WARRIOR: '#2a1408',  // = D_BROWN
-    CLOAK_ROGUE:   '#18182a',  // = D_BLUE
-    CLOAK_WIZARD:  '#18182a',  // = D_BLUE
-    CLOAK_CLERIC:  '#1e1c18',  // = D_STONE
-    TIMING_MISS:   '#080408',  // = D_VOID
-    TIMING_WEAK:   '#8a3020',  // = M_BRICK
-    TIMING_HIT:    '#4a7030',  // = M_MOSS
-    TIMING_CRIT:   '#58c830',  // = L_LEAF
+    MAP_DARK_BG:   '#04030a',  // = D_VOID
+    HP_FULL:       '#387820',  // = L_LEAF
+    HP_MID:        '#c07818',  // = L_GOLD
+    HP_LOW:        '#b01818',  // = A_RED
+    HP_BG:         '#04030a',  // = D_VOID
+    XP_FILL:       '#1e2840',  // = M_SLATE
+    SHADE_BODY:    '#6020a8',  // = A_PURPLE
+    SHADE_EYE:     '#b01818',  // = A_RED
+    LURKER_BODY:   '#4a3018',  // = M_CLAY
+    LURKER_EYE:    '#c04008',  // = A_ORANGE
+    CLASS_WARRIOR: '#c07818',  // = L_GOLD
+    CLASS_ROGUE:   '#6020a8',  // = A_PURPLE
+    CLASS_WIZARD:  '#4a6878',  // = L_BLUE
+    CLASS_CLERIC:  '#c09010',  // = A_YELLOW
+    CLOAK_WARRIOR: '#1a0c04',  // = D_BROWN
+    CLOAK_ROGUE:   '#0c0c1e',  // = D_BLUE
+    CLOAK_WIZARD:  '#0c0c1e',  // = D_BLUE
+    CLOAK_CLERIC:  '#141210',  // = D_STONE
+    TIMING_MISS:   '#04030a',  // = D_VOID
+    TIMING_WEAK:   '#5a1a10',  // = M_BRICK
+    TIMING_HIT:    '#2a4818',  // = M_MOSS
+    TIMING_CRIT:   '#387820',  // = L_LEAF
 });
 
 // ═══════════════════════════════════════════════════════
@@ -2153,10 +2159,9 @@ function rebuildBgCanvas() {
     // Ensure variant indices are pre-computed (lazy — also covers dungeon rebuilds)
     if (!currentMap.variantMap) buildVariantMap(currentMap);
 
-    // 2-tile scroll buffer on every edge.
-    // bgCanvas covers world rect [cam.x-BUF .. cam.x+cW+BUF] × [cam.y-BUF .. cam.y+cH+BUF].
-    // The camera can pan up to BUF pixels in any direction without a rebuild.
-    const BUF = 2 * TS;
+    // [Fix 1] 4-tile scroll buffer — wider zone means threshold crossings are rarer,
+    // eliminating the 1-frame edge-exposure that caused perimeter tile flicker.
+    const BUF = 4 * TS;
     const bw  = cW + 2 * BUF;
     const bh  = cH + 2 * BUF;
 
@@ -2270,8 +2275,9 @@ function rebuildBgCanvas() {
 
     ctx = savedCtx; // restore main context
     bgDirty = false;
-    _bgCamX = cam.x;
-    _bgCamY = cam.y;
+    // [Fix 1] Snap to integer so blit offset never has sub-pixel drift
+    _bgCamX = Math.round(cam.x);
+    _bgCamY = Math.round(cam.y);
 }
 
 // Draw only the animated tiles directly onto the main ctx each frame.
@@ -2288,8 +2294,13 @@ function drawAnimatedTiles() {
             drawTile(tile, tx * TS - cam.x, ty * TS - cam.y, tx, ty);
         }
     }
-    // Grass sway — wind animation on tiles near the player
-    if (typeof VQ !== 'undefined') VQ.drawSwayPass();
+    // [Fix 3] Grass sway — skip when player is within 3 tiles of map edge to prevent
+    // sway overlay writing outside the bgCanvas blit region and flashing against void.
+    if (typeof VQ !== 'undefined' &&
+        player.x > 3 && player.x < currentMap.w - 3 &&
+        player.y > 3 && player.y < currentMap.h - 3) {
+        VQ.drawSwayPass();
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -2405,90 +2416,92 @@ function drawTile(tile, px, py, tx, ty) {
     }
 }
 
+// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
 function drawGrass(px, py, tx, ty) {
+    const P = PALETTE;
     const s = tx*7 + ty*13;
     const U = Math.max(1, Math.floor(TS/16));
-    // 2-tone checkerboard base
-    ctx.fillStyle = (tx+ty)%2 ? '#3c8c2c' : '#388828';
-    ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
-    // 3 pixel highlight rects
-    ctx.fillStyle = '#48a834';
-    ctx.fillRect(Math.floor(px + ((s*3)%14)*U),    Math.floor(py + ((s*7)%14)*U),    U, U);
-    ctx.fillRect(Math.floor(px + ((s*11)%14)*U),   Math.floor(py + ((s*13+4)%14)*U), U, U);
-    ctx.fillRect(Math.floor(px + ((s*5+7)%14)*U),  Math.floor(py + ((s*9+3)%14)*U),  U, U);
-    // 2 grass tufts (1×3U)
-    ctx.fillStyle = '#56b840';
-    ctx.fillRect(Math.floor(px + ((s*17)%13)*U),   Math.floor(py + ((s*19+2)%10)*U), U, U*3);
-    ctx.fillRect(Math.floor(px + ((s*23+5)%13)*U), Math.floor(py + ((s*29+6)%10)*U), U, U*3);
-    // Flower (1 in 13 tiles)
-    if (s % 13 === 0) {
-        const fx = Math.floor(px + TS*.3), fy = Math.floor(py + TS*.3);
-        ctx.fillStyle = (s%2===0) ? '#e8d030' : '#e87878';
-        ctx.fillRect(fx, fy, U*2, U*2);
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(fx+U, fy+U, U, U);
+    const ipx = Math.floor(px), ipy = Math.floor(py);
+    // 2-tone checkerboard base (M_FOREST / M_MOSS)
+    ctx.fillStyle = (tx+ty)%2 ? P.M_FOREST : P.M_MOSS;
+    ctx.fillRect(ipx, ipy, TS, TS);
+    // 1-2 sparse grass tufts (L_LEAF)
+    ctx.fillStyle = P.L_LEAF;
+    ctx.fillRect(ipx + ((s*17)%13)*U, ipy + ((s*19+2)%10)*U, U, U*2);
+    if (s % 3 !== 0)
+        ctx.fillRect(ipx + ((s*23+5)%13)*U, ipy + ((s*29+6)%10)*U, U, U*2);
+    // Lichen patch on 1 in 8 tiles (M_LICHEN)
+    if (s % 8 === 0) {
+        ctx.fillStyle = P.M_LICHEN;
+        ctx.fillRect(ipx + ((s*5)%11)*U, ipy + ((s*11)%11)*U, U*3, U*2);
+    }
+    // Arcane flower on 1 in 20 tiles (M_ARCANE surround, A_PURPLE center)
+    if (s % 20 === 0) {
+        const fx = ipx + ((s*3+4)%12)*U, fy = ipy + ((s*7+3)%12)*U;
+        ctx.fillStyle = P.M_ARCANE;
+        ctx.fillRect(fx-U, fy-U, U*3, U*3);
+        ctx.fillStyle = P.A_PURPLE;
+        ctx.fillRect(fx, fy, U, U);
     }
 }
 
+// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
 function drawPath(px, py, tx, ty) {
+    const P = PALETTE;
     const s = tx*11 + ty*7;
     const gap = Math.max(1, Math.floor(TS/20));
     const half = Math.floor(TS/2);
-    // Mortar base
-    ctx.fillStyle = '#8a7030';
-    ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
-    // 4 flat cobblestones in 2×2 grid
-    const cols = ['#b49040','#c4a850','#a87c30','#bc9848'];
+    const ipx = Math.floor(px), ipy = Math.floor(py);
+    // Mortar base (M_CLAY)
+    ctx.fillStyle = P.M_CLAY;
+    ctx.fillRect(ipx, ipy, TS, TS);
+    // 4 cobblestones — aged worn stone (M_STONE, L_STONE, M_SAND)
+    const stoneCols = [P.M_STONE, P.L_STONE, P.M_SAND, P.M_STONE];
     const offsets = [[gap, gap],[half+gap, gap],[gap, half+gap],[half+gap, half+gap]];
     offsets.forEach(([ox, oy], i) => {
-        const sx = Math.floor(px+ox), sy = Math.floor(py+oy);
+        const sx = ipx + ox, sy = ipy + oy;
         const sw = half - gap*2, sh = half - gap*2;
-        ctx.fillStyle = cols[(s+i) % cols.length];
+        ctx.fillStyle = stoneCols[(s+i) % stoneCols.length];
         ctx.fillRect(sx, sy, sw, sh);
-        // top 1-px highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
-        ctx.fillRect(sx, sy, sw, 1);
-        // bottom 1-px shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fillRect(sx, sy+sh-1, sw, 1);
+        ctx.fillStyle = P.L_PARCH;
+        ctx.fillRect(sx, sy, sw, 1);        // top highlight (L_PARCH)
+        ctx.fillStyle = P.D_STONE;
+        ctx.fillRect(sx, sy+sh-1, sw, 1);  // bottom shadow (D_STONE)
     });
 }
 
+// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
 function drawFloor(px, py, dark) {
-    const darkCols  = ['#231830','#2e2040','#1a1028'];
-    const lightCols = ['#8a5a28','#7a4e20','#9a6832'];
+    const P = PALETTE;
+    const darkCols  = [P.D_BLUE, P.M_TEAL, P.D_VOID];
+    const lightCols = [P.M_CLAY, P.S_DARK, P.S_MID];
     const cols = dark ? darkCols : lightCols;
     const plankH = Math.floor(TS/3);
-    // vertical joint offset alternates per tile column
     const jointX = Math.floor(px/TS) % 2 === 0 ? Math.floor(TS*.42) : Math.floor(TS*.60);
     for (let i = 0; i < 3; i++) {
         const py2 = Math.floor(py + i*plankH);
         const h   = (i === 2) ? TS - 2*plankH : plankH;
         ctx.fillStyle = cols[i];
         ctx.fillRect(Math.floor(px), py2, TS, h);
-        // top highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.07)';
-        ctx.fillRect(Math.floor(px), py2, TS, 1);
-        // vertical joint divider
-        ctx.fillStyle = 'rgba(0,0,0,0.18)';
-        ctx.fillRect(Math.floor(px)+jointX, py2, 1, h);
+        ctx.fillStyle = P.L_PARCH;
+        ctx.fillRect(Math.floor(px), py2, TS, 1);              // top highlight (L_PARCH)
+        ctx.fillStyle = P.D_VOID;
+        ctx.fillRect(Math.floor(px)+jointX, py2, 1, h);        // vertical joint (D_VOID)
     }
 }
 
+// [Fix 2] Rethemed — moody aged stone, M_AMBER top accent, M_LICHEN brick variant
 function drawWall(px, py, dark) {
     const P = PALETTE;
-    const mortar    = dark ? P.D_VOID  : P.M_CLAY;
-    const topStrip  = dark ? P.D_BLUE  : P.M_STONE;
+    const mortar    = dark ? P.D_BLUE  : P.D_VOID;
+    const topStrip  = dark ? P.D_BLUE  : P.M_AMBER;  // torchlit amber glow on light walls
     const brickCols = dark
-        ? [P.D_BLUE, P.M_TEAL, P.D_STONE]
-        : [P.M_CLAY, P.M_STONE, P.S_DARK];
-    // Mortar base
+        ? [P.D_STONE, P.M_TEAL, P.D_BLUE]
+        : [P.M_STONE, P.M_CLAY, P.M_LICHEN];          // aged crumbling stone
     ctx.fillStyle = mortar;
     ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
-    // Top accent strip
     ctx.fillStyle = topStrip;
     ctx.fillRect(Math.floor(px), Math.floor(py), TS, Math.max(1, Math.floor(TS*.06)));
-    // 4 brick rows, each offset half a brick
     const bH = Math.floor(TS/4), bW = Math.floor(TS/2);
     for (let row = 0; row < 4; row++) {
         const by = Math.floor(py + row*bH);
@@ -2501,42 +2514,33 @@ function drawWall(px, py, dark) {
             if (x2 <= x1 || y2 <= y1) continue;
             ctx.fillStyle = brickCols[(row+col+3) % brickCols.length];
             ctx.fillRect(x1, y1, x2-x1, y2-y1);
-            // top 1-px highlight (flat palette — no rgba)
-            ctx.fillStyle = P.L_WHITE;
+            ctx.fillStyle = P.L_STONE;           // torchlit stone highlight
             ctx.fillRect(x1, y1, x2-x1, 1);
-            // bottom 1-px shadow
             ctx.fillStyle = P.D_VOID;
             ctx.fillRect(x1, y2-1, x2-x1, 1);
         }
     }
 }
 
+// [Fix 2] Rewritten — no rgba ground shadow, all palette refs, no raw hex
 function drawTree(px, py, tx, ty) {
-    // 1. Grass base
+    const P = PALETTE;
     drawGrass(px, py, tx, ty);
-    // 2. Ground shadow (flat ellipse)
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(Math.floor(px+TS*.52), Math.floor(py+TS*.68), TS*.34, TS*.12, 0, 0, Math.PI*2);
-    ctx.fill();
-    // 3. Trunk (two flat rects — dark base + lighter center strip)
-    ctx.fillStyle = '#4a2808';
+    // Trunk (D_BROWN base, M_CLAY center strip — no rgba)
+    ctx.fillStyle = P.D_BROWN;
     ctx.fillRect(Math.floor(px+TS*.44), Math.floor(py+TS*.44), Math.floor(TS*.12), Math.floor(TS*.22));
-    ctx.fillStyle = '#6e3e14';
+    ctx.fillStyle = P.M_CLAY;
     ctx.fillRect(Math.floor(px+TS*.46), Math.floor(py+TS*.44), Math.floor(TS*.05), Math.floor(TS*.22));
-    // 4. Canopy — 3 flat arc passes (no gradient)
+    // Canopy arcs — palette colors only, no rgba
     const cx2 = Math.floor(px+TS*.5), cy2 = Math.floor(py+TS*.38), r = TS*.38;
-    // Dark outer ring
-    ctx.fillStyle = '#1a4a08';
+    ctx.fillStyle = P.D_GREEN;
     ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI*2); ctx.fill();
-    // Main mid-green
-    ctx.fillStyle = '#2a6814';
+    ctx.fillStyle = P.M_FOREST;
     ctx.beginPath(); ctx.arc(cx2, cy2 - Math.floor(r*.06), Math.floor(r*.84), 0, Math.PI*2); ctx.fill();
-    // Lighter highlight offset upper-left
-    ctx.fillStyle = '#3a8020';
+    ctx.fillStyle = P.M_MOSS;
     ctx.beginPath(); ctx.arc(cx2 - Math.floor(r*.18), cy2 - Math.floor(r*.20), Math.floor(r*.62), 0, Math.PI*2); ctx.fill();
-    // Bright specular rect upper-left (flat rect instead of arc)
-    ctx.fillStyle = '#50a030';
+    // Specular rect upper-left (L_LEAF)
+    ctx.fillStyle = P.L_LEAF;
     ctx.fillRect(Math.floor(cx2 - r*.38), Math.floor(cy2 - r*.44), Math.floor(r*.28), Math.floor(r*.22));
 }
 
@@ -4023,13 +4027,14 @@ function render() {
     ctx.clearRect(0, 0, cW, cH);
 
     // ── Static tile layer (bgCanvas cache) ────────────────
-    // Only rebuild when the camera has drifted beyond the 2-tile scroll buffer.
-    // Sub-buffer movement is free — just shift the blit offset.
-    const _bgBuf = 2 * TS;
-    if (!bgDirty && (Math.abs(cam.x - _bgCamX) >= _bgBuf || Math.abs(cam.y - _bgCamY) >= _bgBuf)) bgDirty = true;
+    // [Fix 1] _bgBuf matches BUF in rebuildBgCanvas (4 tiles).
+    // Trigger fires at 75% of buffer so rebuild happens before the edge is reached,
+    // eliminating the 1-frame seam that caused perimeter flicker.
+    // Math.round on blit offset prevents sub-pixel jitter on tile edges.
+    const _bgBuf = 4 * TS;
+    if (!bgDirty && (Math.abs(cam.x - _bgCamX) >= _bgBuf * 0.75 || Math.abs(cam.y - _bgCamY) >= _bgBuf * 0.75)) bgDirty = true;
     if (bgDirty) rebuildBgCanvas();
-    // Draw bgCanvas offset so the buffer region is clipped off-screen
-    ctx.drawImage(bgCanvas, _bgCamX - cam.x - _bgBuf, _bgCamY - cam.y - _bgBuf);
+    ctx.drawImage(bgCanvas, Math.round(_bgCamX - cam.x - _bgBuf), Math.round(_bgCamY - cam.y - _bgBuf));
 
     // ── Animated tile layer (water, stairs, torches) ──────
     drawAnimatedTiles();
