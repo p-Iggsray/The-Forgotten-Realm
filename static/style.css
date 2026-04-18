@@ -436,6 +436,19 @@ html, body {
     pointer-events: all;
 }
 
+/* Defeat transition overlay — full screen */
+#defeat-overlay {
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 120;
+}
+.defeat-inner { text-align: center; pointer-events: none; }
+.defeat-title  { font-size: 1.6rem; color: #e44; margin: 0 0 10px; letter-spacing: 0.05em; }
+.defeat-sub    { font-size: 0.9rem; color: #999; margin: 0; }
+
 /* Sign overlay — center of screen */
 #sign-box {
     top: 50%; left: 50%;

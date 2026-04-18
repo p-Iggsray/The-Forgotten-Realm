@@ -1284,10 +1284,12 @@ const player  = {
     isMoving:false,
 };
 const cam     = { x:0, y:0 };
-const ui      = { dialogue:null, sign:null, loading:false, questLog:false, paused:false, inventory:false };
+const ui      = { dialogue:null, sign:null, loading:false, questLog:false, paused:false, inventory:false, dialogueError:null };
+const transition = { active: false, timerId: null };
 let timeMs    = 0;
 let TS        = 48;
 const HUD_H   = 40, HINT_H = 26;
+const DEFEAT_TRANSITION_MS = 600;
 
 // ═══════════════════════════════════════════════════════
 //  CANVAS
@@ -1358,6 +1360,7 @@ document.addEventListener('keydown', e => {
     if (_NAV_KEYS.has(e.key)) e.preventDefault();
     if (!KEYS.has(e.key)) JUST_PRESSED.add(e.key);
     KEYS.add(e.key);
+    if (transition.active) { e.preventDefault(); return; }
     if (battle.active) { e.preventDefault(); handleBattleInput(e.key); return; }
     if (e.key === 'Tab') { e.preventDefault(); toggleInventory(); return; }
     if (e.key === 'e' || e.key === 'E') { e.preventDefault(); handleInteract(); }
@@ -1377,7 +1380,7 @@ document.addEventListener('keydown', e => {
 let moveAccum = 999;
 
 function updateMovement(dt) {
-    if (battle.active || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused) { JUST_PRESSED.clear(); return; }
+    if (battle.active || transition.active || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused) { JUST_PRESSED.clear(); return; }
     const dirs = [
         { keys:['ArrowUp','w','W'],    dx:0,  dy:-1, f:'up'    },
         { keys:['ArrowDown','s','S'],  dx:0,  dy:1,  f:'down'  },
@@ -3552,7 +3555,7 @@ function renderLighting() {
 //  ENEMY AI
 // ═══════════════════════════════════════════════════════
 function updateEnemies(dt) {
-    if (battle.active || ui.dialogue || ui.sign || ui.paused || ui.loading) return;
+    if (battle.active || transition.active || ui.dialogue || ui.sign || ui.paused || ui.loading) return;
     if (!currentMap.enemies) return;
     for (const en of currentMap.enemies) {
         if (!en.alive) continue;
@@ -3944,6 +3947,7 @@ function updateBattle(dt) {
 }
 
 function endBattle(outcome) {
+    if (transition.active) return;
     battle.active = false;
     if (outcome === 'victory') {
         const xp = ENEMY_DEFS[battle.enemy.type].xp;
@@ -3952,8 +3956,17 @@ function endBattle(outcome) {
     } else if (outcome === 'defeat') {
         gs.hp = Math.max(1, Math.floor(gs.maxHp * 0.2));
         updateHPUI();
-        showNotification('You were defeated… Waking up in Eldoria.', 'danger');
-        setTimeout(() => changeMap('village', 22, 32), 600);
+        transition.active = true;
+        showDefeatOverlay();
+        transition.timerId = setTimeout(() => {
+            try {
+                changeMap('village', 22, 32);
+            } finally {
+                hideDefeatOverlay();
+                transition.active = false;
+                transition.timerId = null;
+            }
+        }, DEFEAT_TRANSITION_MS);
     }
     // 'flee' just closes battle; no penalty, no XP
 }
@@ -4657,59 +4670,132 @@ function checkItemPickup() {
 }
 
 // ─ Dialogue ────────────────────────────────────────────
+const DIALOGUE_TIMEOUT_MS = 15_000;
+const DIALOGUE_SLOW_MS    = 3_000;
+
 async function startDialogue(npc) {
-    ui.loading=true;
-    const box=document.getElementById('dialogue-box');
-    document.getElementById('dlg-name').textContent=npc.name;
-    document.getElementById('dlg-portrait').textContent=npc.portrait;
-    const dlgText=document.getElementById('dlg-text');
-    dlgText.textContent='Thinking…';
+    ui.loading = true;
+    const box     = document.getElementById('dialogue-box');
+    const dlgText = document.getElementById('dlg-text');
+    document.getElementById('dlg-name').textContent     = npc.name;
+    document.getElementById('dlg-portrait').textContent = npc.portrait;
+    dlgText.textContent = 'Thinking\u2026';
     dlgText.classList.add('dlg-loading');
-    document.getElementById('dlg-player-msg').textContent='';
+    document.getElementById('dlg-player-msg').textContent = '';
     _dlgSetInputEnabled(false);
     box.classList.remove('hidden');
-    const data=await callInteract(npc,'',npc.history);
-    npc.history=data.history;
-    ui.dialogue=npc; ui.loading=false;
-    showDialogueData(data);
-    _dlgFocus();
+
+    const slowTimer = setTimeout(() => {
+        if (ui.loading) dlgText.textContent = 'Still connecting\u2026';
+    }, DIALOGUE_SLOW_MS);
+
+    try {
+        const data  = await callInteract(npc, '', npc.history);
+        npc.history = data.history;
+        ui.dialogue = npc;
+        showDialogueData(data);
+        _dlgFocus();
+    } catch (err) {
+        _showDialogueError(_categorizeError(err), npc);
+    } finally {
+        clearTimeout(slowTimer);
+        ui.loading = false;
+    }
 }
 
 async function sendDialogueMessage() {
-    if(ui.loading||!ui.dialogue)return;
-    const input=document.getElementById('dlg-input');
-    const text=input.value.trim();
-    if(!text)return;
-    input.value='';
-    const npc=ui.dialogue;
-    ui.loading=true;
-    document.getElementById('dlg-player-msg').textContent=`You: "${text}"`;
-    const dlgText2=document.getElementById('dlg-text');
-    dlgText2.textContent='Thinking…';
-    dlgText2.classList.add('dlg-loading');
+    if (ui.loading || !ui.dialogue) return;
+    const input = document.getElementById('dlg-input');
+    const text  = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    const npc   = ui.dialogue;
+    ui.loading  = true;
+    document.getElementById('dlg-player-msg').textContent = `You: \u201c${text}\u201d`;
+    const dlgText = document.getElementById('dlg-text');
+    dlgText.textContent = 'Thinking\u2026';
+    dlgText.classList.add('dlg-loading');
     _dlgSetInputEnabled(false);
-    const data=await callInteract(npc,text,npc.history);
-    npc.history=data.history;
-    ui.loading=false;
-    // Grant quest only when LLM explicitly signals it
-    if(data.quest_given){
-        const flag=QUEST_GIVER_FLAGS[npc.id];
-        if(flag&&!gs.flags[flag]){
-            gs.flags[flag]=true;
-            const q=QUESTS.find(q=>q.flag_given===flag);
-            if(q) showNotification(`New Quest: ${q.title}`,'quest');
-            updateQuestUI();
+
+    const slowTimer = setTimeout(() => {
+        if (ui.loading) dlgText.textContent = 'Still connecting\u2026';
+    }, DIALOGUE_SLOW_MS);
+
+    try {
+        const data  = await callInteract(npc, text, npc.history);
+        npc.history = data.history;
+        ui.loading  = false;
+        // Grant quest only when LLM explicitly signals it
+        if (data.quest_given) {
+            const flag = QUEST_GIVER_FLAGS[npc.id];
+            if (flag && !gs.flags[flag]) {
+                gs.flags[flag] = true;
+                const q = QUESTS.find(q => q.flag_given === flag);
+                if (q) showNotification(`New Quest: ${q.title}`, 'quest');
+                updateQuestUI();
+            }
         }
+        if (data.ended) { closeDialogue(); return; }
+        showDialogueData(data);
+        _dlgFocus();
+    } catch (err) {
+        _showDialogueError(_categorizeError(err), npc);
+    } finally {
+        clearTimeout(slowTimer);
+        ui.loading = false;
     }
-    if(data.ended){closeDialogue();return;}
-    showDialogueData(data);
-    _dlgFocus();
 }
 
-async function callInteract(npc,playerText,history) {
-    const res=await fetch('/interact',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc:{name:npc.name,role:npc.role,id:npc.id},playerText,history,flags:gs.flags})});
-    return res.json();
+async function callInteract(npc, playerText, history) {
+    const ctrl  = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), DIALOGUE_TIMEOUT_MS);
+    try {
+        const res = await fetch('/interact', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({npc:{name:npc.name,role:npc.role,id:npc.id},playerText,history,flags:gs.flags}),
+            signal: ctrl.signal
+        });
+        if (!res.ok) {
+            let body = `${res.status} ${res.statusText}`;
+            try { body = (await res.text()) || body; } catch (_) {}
+            const err = new Error(body);
+            err.category = res.status >= 500 ? 'server' : 'client';
+            throw err;
+        }
+        try {
+            return await res.json();
+        } catch (_) {
+            const err = new Error('Malformed response from server');
+            err.category = 'parse';
+            throw err;
+        }
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+const DIALOGUE_ERROR_MSGS = {
+    timeout: 'Connection timed out \u2014 the server took too long to respond.',
+    network: 'Network error \u2014 check your connection and try again.',
+    server:  'Server error \u2014 the AI service may be temporarily unavailable.',
+    client:  'Request error \u2014 try reloading the page.',
+    parse:   'The server returned an unreadable response. Please try again.',
+    unknown: 'Something went wrong. Please try again.'
+};
+
+function _categorizeError(err) {
+    if (err.name === 'AbortError') return 'timeout';
+    if (err.category)              return err.category;
+    if (err instanceof TypeError)  return 'network';
+    return 'unknown';
+}
+
+function _showDialogueError(type, npc) {
+    ui.dialogueError = { type, npc };
+    const dlgText = document.getElementById('dlg-text');
+    dlgText.textContent = DIALOGUE_ERROR_MSGS[type] ?? DIALOGUE_ERROR_MSGS.unknown;
+    dlgText.classList.remove('dlg-loading');
 }
 
 function showDialogueData(data) {
@@ -4732,11 +4818,15 @@ function _dlgFocus() {
 
 function closeDialogue() {
     // Quest is granted via LLM signal, NOT automatically on close
-    ui.dialogue=null; ui.loading=false;
+    const errNpc     = ui.dialogueError?.npc;
+    ui.dialogue      = null;
+    ui.loading       = false;
+    ui.dialogueError = null;
     document.getElementById('dialogue-box').classList.add('hidden');
-    document.getElementById('dlg-player-msg').textContent='';
-    const inp=document.getElementById('dlg-input');
-    if(inp){inp.value='';inp.disabled=false;}
+    document.getElementById('dlg-player-msg').textContent = '';
+    const inp = document.getElementById('dlg-input');
+    if (inp) { inp.value = ''; inp.disabled = false; }
+    if (errNpc) showNotification(`Try approaching ${errNpc.name} again.`, 'info');
 }
 
 // ─ Quest Log ───────────────────────────────────────────
@@ -4794,7 +4884,7 @@ function toggleInventory() {
 }
 
 function openInventory() {
-    if (battle.active || ui.dialogue || ui.sign || ui.paused) return;
+    if (battle.active || transition.active || ui.dialogue || ui.sign || ui.paused) return;
     ui.inventory = true;
     closeQuestLog();
     _selectedItem = null;
@@ -4902,6 +4992,13 @@ function useSelectedItem() {
     } else {
         showNotification(`${_selectedItem.name}: ${_selectedItem.desc || 'Nothing happens.'}`, 'info');
     }
+}
+
+function showDefeatOverlay() {
+    document.getElementById('defeat-overlay').classList.remove('hidden');
+}
+function hideDefeatOverlay() {
+    document.getElementById('defeat-overlay').classList.add('hidden');
 }
 
 // ─ Notifications ───────────────────────────────────────

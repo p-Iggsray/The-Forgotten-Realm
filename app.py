@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
 from groq import Groq
 from dotenv import load_dotenv
-import os, io, asyncio, re, json
+import os, io, asyncio, re, json, threading, concurrent.futures
 import edge_tts
 import html as html_lib
 
@@ -9,6 +9,15 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
+
+TTS_TIMEOUT_S      = 15
+TTS_MAX_CONCURRENT = 3
+LLM_MAX_CONCURRENT = 4
+
+_tts_sem    = threading.Semaphore(TTS_MAX_CONCURRENT)
+_llm_sem    = threading.Semaphore(LLM_MAX_CONCURRENT)
+_async_loop = asyncio.new_event_loop()
+threading.Thread(target=_async_loop.run_forever, daemon=True, name="tts-loop").start()
 
 def _get_groq():
     key = os.getenv("GROQ_API_KEY")
@@ -137,11 +146,19 @@ RULES:
     else:
         history.append({"role": "user", "content": player_text})
 
-    response = _get_groq().chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=history,
-        max_tokens=120,
-    )
+    if not _llm_sem.acquire(blocking=True, timeout=10):
+        return jsonify({"error": "llm_busy"}), 503
+
+    try:
+        response = _get_groq().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=history,
+            max_tokens=120,
+        )
+    except Exception as e:
+        return jsonify({"error": "llm_error", "detail": str(e)}), 502
+    finally:
+        _llm_sem.release()
 
     reply = response.choices[0].message.content
     history.append({"role": "assistant", "content": reply})
@@ -187,7 +204,22 @@ def narrate():
     text = request.json.get("text", "").strip()
     if not text:
         return ("", 204)
-    return send_file(asyncio.run(_tts(text)), mimetype="audio/mpeg")
+    if not _tts_sem.acquire(blocking=True, timeout=TTS_TIMEOUT_S):
+        return jsonify({"error": "tts_busy"}), 503
+    try:
+        future = asyncio.run_coroutine_threadsafe(
+            asyncio.wait_for(_tts(text), timeout=TTS_TIMEOUT_S),
+            _async_loop
+        )
+        try:
+            buf = future.result(timeout=TTS_TIMEOUT_S + 5)
+        except (concurrent.futures.TimeoutError, asyncio.TimeoutError):
+            return jsonify({"error": "tts_timeout"}), 504
+        except Exception as e:
+            return jsonify({"error": "tts_error", "detail": str(e)}), 502
+        return send_file(buf, mimetype="audio/mpeg")
+    finally:
+        _tts_sem.release()
 
 
 if __name__ == "__main__":
