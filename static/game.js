@@ -1519,18 +1519,37 @@ function _mkTile() {
     return c;
 }
 
+// Color parse cache — hex '#rrggbb' → [r,g,b], computed once per color string.
+const _rgbCache = new Map();
+function _hexToRgb(hex) {
+    if (_rgbCache.has(hex)) return _rgbCache.get(hex);
+    const v = parseInt(hex.slice(1), 16);
+    const result = [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+    _rgbCache.set(hex, result);
+    return result;
+}
+
 // 2-colour checkerboard dither over a rectangular region.
 // col1 = even-position colour (dominant), col2 = odd-position colour.
 // offset (0|1) shifts the checkerboard phase by one pixel for directionality.
-// Intended for tile-cache builds (called once, not per frame).
+// Uses putImageData for bulk pixel writes — ~270k fillRect calls → 1 call per region.
 function dither2(c, bx, by, bw, bh, col1, col2, offset) {
-    const o = offset | 0;
-    for (let y = by; y < by + bh; y++) {
-        for (let x = bx; x < bx + bw; x++) {
-            c.fillStyle = (((x + y + o) & 1) === 0) ? col1 : col2;
-            c.fillRect(x, y, 1, 1);
+    const o  = offset | 0;
+    const [r1,g1,b1] = _hexToRgb(col1);
+    const [r2,g2,b2] = _hexToRgb(col2);
+    const data = new Uint8ClampedArray(bw * bh * 4);
+    for (let y = 0; y < bh; y++) {
+        for (let x = 0; x < bw; x++) {
+            const i = (y * bw + x) * 4;
+            if (((bx + x + by + y + o) & 1) === 0) {
+                data[i]=r1; data[i+1]=g1; data[i+2]=b1;
+            } else {
+                data[i]=r2; data[i+1]=g2; data[i+2]=b2;
+            }
+            data[i+3] = 255;
         }
     }
+    c.putImageData(new ImageData(data, bw, bh), bx, by);
 }
 
 function invalidateTileCache() { _tcTS = 0; }
@@ -2355,38 +2374,6 @@ function rebuildBgCanvas() {
         }
     }
 
-    // ── Phase 2: building dark outline pass ────────────────────────────────────
-    // For every exterior WALL tile on the outdoor map, stroke a dark band on each
-    // edge that borders non-wall ground. This gives buildings a clear black border
-    // that separates them from the sandy ground — matching the reference art.
-    //
-    // Only runs on the outdoor village map (returnMap = undefined, dark = false).
-    // Runs once per bgCanvas rebuild, not per frame — zero per-frame cost.
-    if (!currentMap.returnMap && !currentMap.dark) {
-        const outlineW = Math.max(2, Math.round(TS * 0.10)); // ≈10 % of tile
-        bgCtx.fillStyle = 'rgba(10,8,18,0.85)';
-        const solid = t => t === TILE.BUILDING_WALL || t === TILE.DOOR;
-        for (let ty = sty; ty <= ety; ty++) {
-            for (let tx = stx; tx <= etx; tx++) {
-                if (currentMap.tiles[ty][tx] !== TILE.BUILDING_WALL) continue;
-                const bpx = Math.round((tx - stx) * TS + BUF);
-                const bpy = Math.round((ty - sty) * TS + BUF);
-                // North border
-                if (!solid(currentMap.tiles[ty-1]?.[tx]))
-                    bgCtx.fillRect(bpx, bpy, TS, outlineW);
-                // South border
-                if (!solid(currentMap.tiles[ty+1]?.[tx]))
-                    bgCtx.fillRect(bpx, bpy + TS - outlineW, TS, outlineW);
-                // West border
-                if (!solid(currentMap.tiles[ty]?.[tx-1]))
-                    bgCtx.fillRect(bpx, bpy, outlineW, TS);
-                // East border
-                if (!solid(currentMap.tiles[ty]?.[tx+1]))
-                    bgCtx.fillRect(bpx + TS - outlineW, bpy, outlineW, TS);
-            }
-        }
-    }
-
     // Bake AO with matching BUF offset so gradients align with the shifted tile positions
     if (typeof VQ !== 'undefined') VQ.bakeAO(bgCtx, stx, sty, etx, ety, BUF, BUF);
 
@@ -2449,13 +2436,6 @@ function drawAnimatedTiles() {
             if (!ANIMATED_TILES.has(tile)) continue;
             drawTile(tile, tx * TS - cam.x, ty * TS - cam.y, tx, ty);
         }
-    }
-    // [Fix 3] Grass sway — skip when player is within 3 tiles of map edge to prevent
-    // sway overlay writing outside the bgCanvas blit region and flashing against void.
-    if (typeof VQ !== 'undefined' &&
-        player.x > 3 && player.x < currentMap.w - 3 &&
-        player.y > 3 && player.y < currentMap.h - 3) {
-        VQ.drawSwayPass();
     }
 }
 
@@ -2992,35 +2972,52 @@ function _spawnAmbient() {
 
 function renderParticles() {
     ctx.save();
+
+    // Pass 1: fireflies (shadowBlur=10, set once for the group)
+    ctx.shadowColor = '#80ff80';
+    ctx.shadowBlur  = 10;
+    ctx.fillStyle   = '#c0ffc0';
     for (const p of PARTICLES) {
-        const pct = p.life/p.maxLife;
-        const sx  = p.x-cam.x, sy = p.y-cam.y;
+        if (p.type !== 'firefly') continue;
+        const sx = p.x-cam.x, sy = p.y-cam.y;
         if (sx<-30||sx>cW+30||sy<-30||sy>cH+30) continue;
-        if (p.type==='firefly') {
-            const alpha = Math.sin(pct*Math.PI)*(.5+.4*Math.sin(p.life*.008+p.phase));
-            ctx.globalAlpha  = alpha;
-            ctx.shadowColor  = '#80ff80';
-            ctx.shadowBlur   = 10;
-            ctx.fillStyle    = '#c0ffc0';
-            ctx.beginPath(); ctx.arc(Math.floor(sx),Math.floor(sy),p.size,0,Math.PI*2); ctx.fill();
-        } else if (p.type==='dust') {
+        const pct = p.life/p.maxLife;
+        ctx.globalAlpha = Math.sin(pct*Math.PI)*(.5+.4*Math.sin(p.life*.008+p.phase));
+        ctx.beginPath(); ctx.arc(Math.floor(sx),Math.floor(sy),p.size,0,Math.PI*2); ctx.fill();
+    }
+
+    // Pass 2: dust + leaves (no shadow)
+    ctx.shadowBlur = 0;
+    for (const p of PARTICLES) {
+        if (p.type !== 'dust' && p.type !== 'leaf') continue;
+        const sx = p.x-cam.x, sy = p.y-cam.y;
+        if (sx<-30||sx>cW+30||sy<-30||sy>cH+30) continue;
+        const pct = p.life/p.maxLife;
+        if (p.type === 'dust') {
             ctx.globalAlpha = Math.sin(pct*Math.PI)*.22;
-            ctx.shadowBlur  = 0;
             ctx.fillStyle   = '#806050';
             ctx.fillRect(Math.floor(sx),Math.floor(sy),Math.ceil(p.size),Math.ceil(p.size));
-        } else if (p.type==='spark') {
-            ctx.globalAlpha = (1-pct)*.9;
-            ctx.shadowColor = p.color; ctx.shadowBlur = 5;
-            ctx.fillStyle   = p.color;
-            ctx.fillRect(Math.floor(sx),Math.floor(sy),Math.ceil(p.size),Math.ceil(p.size));
-        } else if (p.type==='leaf') {
+        } else {
             ctx.globalAlpha = Math.sin(pct*Math.PI)*.75;
-            ctx.shadowBlur  = 0;
             ctx.fillStyle   = p.color;
             ctx.save(); ctx.translate(Math.floor(sx),Math.floor(sy)); ctx.rotate(p.angle);
             ctx.fillRect(-p.size,-p.size*.5,p.size*2,p.size); ctx.restore();
         }
     }
+
+    // Pass 3: sparks (shadowBlur=5, set once for the group)
+    ctx.shadowBlur = 5;
+    for (const p of PARTICLES) {
+        if (p.type !== 'spark') continue;
+        const sx = p.x-cam.x, sy = p.y-cam.y;
+        if (sx<-30||sx>cW+30||sy<-30||sy>cH+30) continue;
+        const pct = p.life/p.maxLife;
+        ctx.globalAlpha = (1-pct)*.9;
+        ctx.shadowColor = p.color;
+        ctx.fillStyle   = p.color;
+        ctx.fillRect(Math.floor(sx),Math.floor(sy),Math.ceil(p.size),Math.ceil(p.size));
+    }
+
     ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     ctx.restore();
 }
@@ -3048,6 +3045,7 @@ function renderVignette() {
 // ═══════════════════════════════════════════════════════
 const CLASS_COLORS = {Warrior:PALETTE.CLASS_WARRIOR,Rogue:PALETTE.CLASS_ROGUE,Wizard:PALETTE.CLASS_WIZARD,Cleric:PALETTE.CLASS_CLERIC};
 const CLASS_CLOAK  = {Warrior:PALETTE.CLOAK_WARRIOR,Rogue:PALETTE.CLOAK_ROGUE,Wizard:PALETTE.CLOAK_WIZARD,Cleric:PALETTE.CLOAK_CLERIC};
+const _tintCache   = new Map(); // enemy hurt-flash rgba strings keyed by integer tint level (0-100)
 
 // ── Per-frame allocation fix ──────────────────────────────────────
 // These four lookup tables were previously declared as new objects inside
@@ -3703,7 +3701,9 @@ function drawEnemyOverworld(sx, sy, en) {
     if (en.hurtTimer > 0) {
         const tint = en.hurtTimer / 200;
         const ecx  = sx + TS / 2, ecy = sy + TS / 2;
-        ctx.fillStyle = `rgba(255,80,80,${(tint * 0.55).toFixed(2)})`;
+        const _tintKey = Math.round(tint * 100);
+        if (!_tintCache.has(_tintKey)) _tintCache.set(_tintKey, `rgba(255,80,80,${(_tintKey * 0.0055).toFixed(2)})`);
+        ctx.fillStyle = _tintCache.get(_tintKey);
         ctx.beginPath(); ctx.arc(ecx, ecy, TS * 0.4, 0, Math.PI * 2); ctx.fill();
     }
 
@@ -4417,7 +4417,10 @@ function drawBattlePlayerSprite(sx, sy, sz) {
 }
 
 
+let _lastHpVal = -1, _lastHpMax = -1;
 function updateHPUI() {
+    if (gs.hp === _lastHpVal && gs.maxHp === _lastHpMax) return;
+    _lastHpVal = gs.hp; _lastHpMax = gs.maxHp;
     const fill = document.getElementById('hp-fill');
     const text = document.getElementById('hp-text');
     if (fill) {
@@ -4443,6 +4446,7 @@ function updateHPUI() {
 // ═══════════════════════════════════════════════════════
 let _minimapEl = null, _minimapCtx = null;
 let _minimapTileCache = null, _minimapMapId = null;
+let _minimapDisplayState = null, _minimapFrameSkip = 0;
 function _buildMinimapTiles(mW, mH) {
     _minimapTileCache = document.createElement('canvas');
     _minimapTileCache.width = mW; _minimapTileCache.height = mH;
@@ -4465,9 +4469,17 @@ function renderMinimap() {
         _minimapCtx = _minimapEl.getContext('2d');
         _minimapCtx.imageSmoothingEnabled = false;
     }
-    // Hide during battle or loading
-    _minimapEl.style.display = (battle.active || ui.loading) ? 'none' : 'block';
-    if (battle.active || ui.loading) return;
+    // Cache display state — only write DOM when it changes
+    const shouldShow = !battle.active && !ui.loading;
+    if (shouldShow !== _minimapDisplayState) {
+        _minimapDisplayState = shouldShow;
+        _minimapEl.style.display = shouldShow ? 'block' : 'none';
+    }
+    if (!shouldShow) return;
+
+    // Throttle tile+entity redraw to ~12fps (every 5 frames)
+    if (++_minimapFrameSkip % 5 !== 0) return;
+
     const mW = _minimapEl.width, mH = _minimapEl.height;
     // Rebuild tile layer only on map change
     if (!_minimapTileCache || _minimapMapId !== currentMap.id) _buildMinimapTiles(mW, mH);
@@ -4552,6 +4564,7 @@ function render() {
 
 function isAdjacent(nx,ny){return Math.abs(nx-player.x)+Math.abs(ny-player.y)===1;}
 
+let _lastHint = null;
 function updateHintBar() {
     const adj=[{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
     let hint='';
@@ -4575,7 +4588,7 @@ function updateHintBar() {
         const npc=currentMap.npcs.find(n=>n.x===tx&&n.y===ty);
         if (npc) { hint=`Press E to talk to ${npc.name}`; break; }
     }
-    document.getElementById('hint-bar').textContent=hint;
+    if (hint !== _lastHint) { _lastHint = hint; document.getElementById('hint-bar').textContent = hint; }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4950,6 +4963,7 @@ function openPause() {
     if (document.getElementById('game-screen').classList.contains('hidden')) return;
     ui.paused = true;
     if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
+    clearInterval(melodyTimer); melodyTimer = null;
     // Sync pause slider to shared volume preference
     const vol = window.gameVolumePct ?? 50;
     const slider = _pauseVol();
@@ -5095,9 +5109,6 @@ function loop(ts) {
     if (typeof spriteRenderer !== 'undefined') {
         spriteRenderer.advanceAnimations(Math.min(rawDt, 50));
     }
-    // Advance grass sway step counter in the update path, not inside render.
-    if (typeof VQ !== 'undefined') VQ.advanceSway();
-
     render();
     requestAnimationFrame(loop);
 }

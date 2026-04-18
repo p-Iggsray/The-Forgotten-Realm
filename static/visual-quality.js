@@ -102,6 +102,49 @@ const VQ = (() => {
         ]);
     }
 
+    // Pre-rendered AO strips — built once per TS, blitted per tile during bakeAO.
+    // Eliminates ~300+ createLinearGradient calls per bgCanvas rebuild.
+    let _aoNStrip = null, _aoWStrip = null, _aoCornerStrip = null, _aoStripTS = 0;
+    function _ensureAOStrips(ts) {
+        if (_aoStripTS === ts) return;
+        _aoStripTS = ts;
+
+        const sh = Math.floor(ts * C.aoNDepth);
+        _aoNStrip = document.createElement('canvas');
+        _aoNStrip.width = ts + 1; _aoNStrip.height = sh;
+        const nc = _aoNStrip.getContext('2d');
+        nc.imageSmoothingEnabled = false;
+        const ng = nc.createLinearGradient(0, 0, 0, sh);
+        ng.addColorStop(0,    `rgba(0,2,10,${C.aoNAlpha})`);
+        ng.addColorStop(0.45, `rgba(0,2,10,${C.aoNAlpha * 0.30})`);
+        ng.addColorStop(1,    'rgba(0,2,10,0)');
+        nc.fillStyle = ng;
+        nc.fillRect(0, 0, ts + 1, sh);
+
+        const sw = Math.floor(ts * C.aoWDepth);
+        _aoWStrip = document.createElement('canvas');
+        _aoWStrip.width = sw; _aoWStrip.height = ts + 1;
+        const wc = _aoWStrip.getContext('2d');
+        wc.imageSmoothingEnabled = false;
+        const wg = wc.createLinearGradient(0, 0, sw, 0);
+        wg.addColorStop(0,    `rgba(0,2,10,${C.aoWAlpha})`);
+        wg.addColorStop(0.45, `rgba(0,2,10,${C.aoWAlpha * 0.25})`);
+        wg.addColorStop(1,    'rgba(0,2,10,0)');
+        wc.fillStyle = wg;
+        wc.fillRect(0, 0, sw, ts + 1);
+
+        const cr = Math.floor(ts * C.aoCrnr);
+        _aoCornerStrip = document.createElement('canvas');
+        _aoCornerStrip.width = _aoCornerStrip.height = cr;
+        const cc = _aoCornerStrip.getContext('2d');
+        cc.imageSmoothingEnabled = false;
+        const cg = cc.createRadialGradient(0, 0, 0, 0, 0, cr);
+        cg.addColorStop(0, `rgba(0,2,10,${C.aoNAlpha * 0.55})`);
+        cg.addColorStop(1, 'rgba(0,2,10,0)');
+        cc.fillStyle = cg;
+        cc.fillRect(0, 0, cr, cr);
+    }
+
     // ═══════════════════════════════════════════════════════════════
     //  1 + 2 — AMBIENT OCCLUSION + AUTOTILE BLENDING
     //  Baked into bgCtx once per bgDirty rebuild. No per-frame cost.
@@ -115,6 +158,7 @@ const VQ = (() => {
     // Callers that do not use a buffered canvas pass no arguments (defaults to 0).
     function bakeAO(bgc, stx, sty, etx, ety, bakeOffX = 0, bakeOffY = 0) {
         _sets();
+        _ensureAOStrips(TS);
         const P  = PALETTE;
         const T  = TS;
         const bw = Math.max(4, Math.floor(T * C.blendW));
@@ -133,37 +177,15 @@ const VQ = (() => {
                     const tW  = currentMap.tiles[ty]?.[tx - 1];
                     const tNW = currentMap.tiles[ty - 1]?.[tx - 1];
 
-                    // North wall/tree → shadow falling south
-                    if (_AO_CAST.has(tN)) {
-                        const sh = Math.floor(T * C.aoNDepth);
-                        const g  = bgc.createLinearGradient(0, py, 0, py + sh);
-                        g.addColorStop(0,    `rgba(0,2,10,${C.aoNAlpha})`);
-                        g.addColorStop(0.45, `rgba(0,2,10,${C.aoNAlpha * 0.30})`);
-                        g.addColorStop(1,    'rgba(0,2,10,0)');
-                        bgc.fillStyle = g;
-                        bgc.fillRect(px, py, T + 1, sh);
-                    }
+                    // North wall/tree → shadow falling south (blit pre-rendered strip)
+                    if (_AO_CAST.has(tN)) bgc.drawImage(_aoNStrip, px, py);
 
-                    // West wall/tree → shadow falling east
-                    if (_AO_CAST.has(tW)) {
-                        const sw = Math.floor(T * C.aoWDepth);
-                        const g  = bgc.createLinearGradient(px, 0, px + sw, 0);
-                        g.addColorStop(0,    `rgba(0,2,10,${C.aoWAlpha})`);
-                        g.addColorStop(0.45, `rgba(0,2,10,${C.aoWAlpha * 0.25})`);
-                        g.addColorStop(1,    'rgba(0,2,10,0)');
-                        bgc.fillStyle = g;
-                        bgc.fillRect(px, py, sw, T + 1);
-                    }
+                    // West wall/tree → shadow falling east (blit pre-rendered strip)
+                    if (_AO_CAST.has(tW)) bgc.drawImage(_aoWStrip, px, py);
 
                     // NW corner — fills the gap when neither N nor W alone casts
-                    if (_AO_CAST.has(tNW) && !_AO_CAST.has(tN) && !_AO_CAST.has(tW)) {
-                        const cr = Math.floor(T * C.aoCrnr);
-                        const g  = bgc.createRadialGradient(px, py, 0, px, py, cr);
-                        g.addColorStop(0, `rgba(0,2,10,${C.aoNAlpha * 0.55})`);
-                        g.addColorStop(1, 'rgba(0,2,10,0)');
-                        bgc.fillStyle = g;
-                        bgc.fillRect(px, py, cr, cr);
-                    }
+                    if (_AO_CAST.has(tNW) && !_AO_CAST.has(tN) && !_AO_CAST.has(tW))
+                        bgc.drawImage(_aoCornerStrip, px, py);
                 }
 
                 // ── Autotile blending — PATH side ─────────────────────
@@ -345,11 +367,7 @@ const VQ = (() => {
         // Do not draw procedural grass over atlas tiles — wait for atlas-baked frames.
         if (!_swayBuiltWithAtlas) return;
 
-        // Frame 0 = same as baked tile — skip to avoid unnecessary overdraw
-        if (_swayStep === 0) return;
-
         const frames = _swayFrames;
-        const step   = _swayStep;
         const rad    = C.swayRadius;
 
         // Only iterate the viewport — same bounds as drawAnimatedTiles
@@ -367,7 +385,7 @@ const VQ = (() => {
             for (let tx = stx; tx <= etx; tx++) {
                 if (Math.abs(tx - player.x) > rad) continue;
                 const tile = currentMap.tiles[ty][tx];
-                if (tile !== TILE.GRASS && tile !== TILE.TREE) continue;
+                if (tile !== TILE.GRASS) continue;
 
                 // Per-tile phase offset — creates a ripple effect across the field
                 const phase      = ((tx * 3 + ty * 5) & 7) / 8; // 0..0.875
@@ -493,8 +511,9 @@ const VQ = (() => {
         _swayStep           = 0;
         _swayTimer          = 0;
         _swayBuiltWithAtlas = false;
-        _cgGrd              = null; // canvas ctx recreated on resize — old gradient invalid
-        _vqDiscTS           = 0;   // rebuild torch disc at new TS
+        _cgGrd              = null;
+        _vqDiscTS           = 0;
+        _aoStripTS          = 0;   // rebuild AO strips at new TS
     }
 
     // ─── public API ───────────────────────────────────────────────
