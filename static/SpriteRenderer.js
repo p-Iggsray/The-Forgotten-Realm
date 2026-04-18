@@ -1,4 +1,6 @@
 'use strict';
+const WATER_FRAME_MS = 250; // ms per water animation frame
+
 // ═══════════════════════════════════════════════════════════════════
 //  SpriteRenderer.js  —  The Forgotten Realm
 //
@@ -37,6 +39,14 @@ class SpriteRenderer {
 
     // Discard all cached tile canvases (call after resize or map change).
     invalidate() { tileRenderer.invalidate(); }
+
+    // Return the cached offscreen canvas for a given (row, variant, ts) triple,
+    // or null if it hasn't been built yet. Used by VQ._buildSway() so sway frames
+    // share the same base image as bgCanvas — prevents the visual mismatch that
+    // caused grass flickering in the player's sway radius.
+    _getCachedVariant(row, variant, ts) {
+        return tileRenderer._cache.get(`${row}:${variant}:${ts}`) ?? null;
+    }
 
     // Entry point called from game.js::drawTile() when isReady() is true.
     // ipx/ipy are already Math.floor()'d by drawTile() before this call.
@@ -126,7 +136,7 @@ class SpriteRenderer {
 
             case TILE.WATER: {
                 // _drawRefWater has 4 frames (0-3); advance at 250 ms per frame.
-                tileRenderer.draw(ctx, 'WATER', Math.floor(timeMs / 250) & 3, ipx, ipy, TS);
+                tileRenderer.draw(ctx, 'WATER', Math.floor(timeMs / WATER_FRAME_MS) & 3, ipx, ipy, TS);
                 break;
             }
 

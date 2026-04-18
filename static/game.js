@@ -830,11 +830,19 @@ function buildMineTiles(rng) {
     return { tiles, w:MW, h:MH, playerStart:ps, signs, itemPos, ghostPos, enemySpawns };
 }
 
+// Shared tile-map builder helpers — used by all buildXxxInterior() functions.
+// Must be called with the local map array `m` already in scope via destructuring:
+//   const { s, fill } = _makeTileHelpers(m);
+function _makeTileHelpers(m) {
+    const s    = (x,y,t)           => { m[y][x]=t; };
+    const fill = (x1,y1,x2,y2,t)  => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    return { s, fill };
+}
+
 function buildEldersHallInterior() {
     const W_=14, H_=12;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     // Torches on north wall
     s(3,0,TC); s(10,0,TC);
@@ -852,8 +860,7 @@ function buildEldersHallInterior() {
 function buildMerchantInterior() {
     const W_=12, H_=10;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(9,0,TC);
     // L-shape counter
@@ -868,8 +875,7 @@ function buildMerchantInterior() {
 function buildBlacksmithInterior() {
     const W_=14, H_=12;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(11,0,TC);
     // Forge torch (east side — forge fire)
@@ -887,8 +893,7 @@ function buildBlacksmithInterior() {
 function buildTavernInterior() {
     const W_=14, H_=12;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(11,0,TC);
     // Bar counter (L-shape)
@@ -905,8 +910,7 @@ function buildTavernInterior() {
 function buildMarketInterior() {
     const W_=16, H_=12;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(13,0,TC);
     // 3 market stalls
@@ -918,8 +922,7 @@ function buildMarketInterior() {
 function buildCottageInterior() {
     const W_=10, H_=10;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(7,0,TC);
     // Bed (NE)
@@ -935,8 +938,7 @@ function buildCottageInterior() {
 function buildChapelInterior() {
     const W_=12, H_=12;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(9,0,TC);
     // Altar signs on north wall
@@ -953,8 +955,7 @@ function buildChapelInterior() {
 function buildVeylaInterior() {
     const W_=12, H_=10;
     const m = Array.from({length:H_}, () => new Array(W_).fill(W));
-    const s = (x,y,t) => { m[y][x]=t; };
-    const fill = (x1,y1,x2,y2,t) => { for(let y=y1;y<=y2;y++) for(let x=x1;x<=x2;x++) s(x,y,t); };
+    const { s, fill } = _makeTileHelpers(m);
     fill(1,1,W_-2,H_-2, F);
     s(2,0,TC); s(9,0,TC);
     // Bookshelves on east/west walls
@@ -1528,19 +1529,6 @@ function dither2(c, bx, by, bw, bh, col1, col2, offset) {
         for (let x = bx; x < bx + bw; x++) {
             c.fillStyle = (((x + y + o) & 1) === 0) ? col1 : col2;
             c.fillRect(x, y, 1, 1);
-        }
-    }
-}
-
-// 25-percent density dither — paints col at every 4th pixel (Bayer-like pattern).
-// Used for the outer halo pass of autotile blending: creates a 3-step gradient
-// (solid border → 50% dither2 strip → 25% dither4 halo → clean tile interior).
-function dither4(c, bx, by, bw, bh, col, offset) {
-    const o = offset | 0;
-    c.fillStyle = col;
-    for (let y = by; y < by + bh; y++) {
-        for (let x = bx; x < bx + bw; x++) {
-            if (((x + y + o) & 3) === 0) c.fillRect(x, y, 1, 1);
         }
     }
 }
@@ -5107,6 +5095,8 @@ function loop(ts) {
     if (typeof spriteRenderer !== 'undefined') {
         spriteRenderer.advanceAnimations(Math.min(rawDt, 50));
     }
+    // Advance grass sway step counter in the update path, not inside render.
+    if (typeof VQ !== 'undefined') VQ.advanceSway();
 
     render();
     requestAnimationFrame(loop);

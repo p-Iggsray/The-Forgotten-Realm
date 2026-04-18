@@ -909,7 +909,7 @@ class TileRenderer {
         const img = new Image();
         const entry = { img, loaded: false };
         img.onload  = () => { entry.loaded = true; this.invalidate(); };
-        img.onerror = () => console.warn(`TileRenderer: cannot load "${name}" from ${src}`);
+        img.onerror = () => { if (typeof DEBUG !== 'undefined' && DEBUG) console.warn(`TileRenderer: cannot load "${name}" from ${src}`); };
         img.src = src;
         this._sheets.set(name, entry);
     }

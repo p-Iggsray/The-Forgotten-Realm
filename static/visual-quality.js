@@ -65,6 +65,11 @@ const VQ = (() => {
         // Outdoor torch
         torchRadius: 4.8,  // torch glow radius in tile widths
         torchAlpha:  0.13, // peak glow alpha (screen blend)
+
+        // Grass sway frame compositing
+        swayDarkAlpha:  0.22,  // shadow strip opacity (leaning blades, dark edge)
+        swayLightAlpha: 0.15,  // bright strip opacity (leaning blades, lit face)
+        swayPhaseScale: 0.001, // timeMs → phase multiplier for per-tile wind offset
     };
 
     // ─── cached torch disc for outdoor glow ─────────────────────────
@@ -257,26 +262,34 @@ const VQ = (() => {
             return;
         }
 
+        // Ensure TileRenderer has all 8 grass variants cached at this ts before
+        // building sway frames — warmRow is a no-op if already warm.
+        tileRenderer.warmRow('GRASS', ts);
+
+        // Verify at least variant 0 is actually in the cache before proceeding.
+        // If warmRow failed for any reason, abort and retry next frame.
+        const testBase = spriteRenderer._getCachedVariant('GRASS', 0, ts);
+        if (!testBase) {
+            _swayFrames         = null;
+            _swayBuiltWithAtlas = false;
+            _swayTS             = ts;
+            return;
+        }
+
         _swayFrames = [];
         for (let v = 0; v < 8; v++) {
             const frames = [];
+            // Fetch the exact canvas bgCanvas used for this variant — same object.
+            const base = spriteRenderer._getCachedVariant('GRASS', v, ts);
             for (let step = 0; step < 3; step++) {
                 const c   = document.createElement('canvas');
                 c.width   = c.height = ts;
                 const ctx2 = c.getContext('2d');
                 ctx2.imageSmoothingEnabled = false;
 
-                // Base: use the atlas grass sprite so sway frames are visually
-                // identical to what bgCanvas already baked for this variant.
-                // Fall back to the procedural cache only if the atlas cut is absent.
-                let base = null;
-                try { base = spriteRenderer._getCachedVariant('GRASS', v, ts); }
-                catch (_) { /* atlas entry missing — will use procedural */ }
-                if (base) {
-                    ctx2.drawImage(base, 0, 0, ts, ts);
-                } else if (typeof _tc !== 'undefined' && _tc[`g${v}`]) {
-                    ctx2.drawImage(_tc[`g${v}`], 0, 0, ts, ts);
-                }
+                // Base must be the TileRenderer canvas so sway frames are
+                // pixel-identical to what bgCanvas baked — prevents flicker.
+                if (base) ctx2.drawImage(base, 0, 0, ts, ts);
 
                 if (step !== 0) {
                     // step 1 = leaning right  → shadow on left,  light on right
@@ -285,12 +298,12 @@ const VQ = (() => {
                     const lightX  = step === 1 ? ts - sw : 0;
 
                     // Shadow strip (dark edge of leaning blades)
-                    ctx2.globalAlpha = 0.22;
+                    ctx2.globalAlpha = C.swayDarkAlpha;
                     ctx2.fillStyle   = P.D_GREEN;
                     ctx2.fillRect(shadowX, 0, sw, sh);
 
                     // Bright strip (lit face of leaning blades)
-                    ctx2.globalAlpha = 0.15;
+                    ctx2.globalAlpha = C.swayLightAlpha;
                     ctx2.fillStyle   = P.L_LEAF;
                     ctx2.fillRect(lightX, 0, sw, Math.floor(sh * 0.70));
 
@@ -332,8 +345,6 @@ const VQ = (() => {
         // Do not draw procedural grass over atlas tiles — wait for atlas-baked frames.
         if (!_swayBuiltWithAtlas) return;
 
-        _advanceSway();
-
         // Frame 0 = same as baked tile — skip to avoid unnecessary overdraw
         if (_swayStep === 0) return;
 
@@ -348,7 +359,7 @@ const VQ = (() => {
         const ety = Math.min(currentMap.h - 1, Math.ceil((cam.y + cH) / TS));
 
         // Per-tile wind phase offset — tiles don't all sway in unison
-        const tBase = timeMs * 0.001 * C.swayFps;
+        const tBase = timeMs * C.swayPhaseScale * C.swayFps;
 
         for (let ty = sty; ty <= ety; ty++) {
             // Quick range rejection — skip rows far from player
@@ -489,6 +500,7 @@ const VQ = (() => {
     // ─── public API ───────────────────────────────────────────────
     return {
         bakeAO,
+        advanceSway: _advanceSway,
         drawSwayPass,
         renderColorGrade,
         renderOutdoorTorchGlow,
