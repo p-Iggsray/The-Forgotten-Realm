@@ -209,15 +209,15 @@
             <span id="hp-text">50/50</span>
         </div>
         <div id="hud-center">
-            <span>WASD / &#8592;&#8593;&#8595;&#8594; Move</span>
+            <span><kbd>WASD</kbd> Move</span>
             <span class="hud-sep">·</span>
-            <span>E Interact</span>
+            <span><kbd>E</kbd> Interact</span>
             <span class="hud-sep">·</span>
-            <span>Q Quests</span>
+            <span><kbd>Q</kbd> Quests</span>
             <span class="hud-sep">·</span>
-            <span>Tab Inventory</span>
+            <span><kbd>Tab</kbd> Inventory</span>
             <span class="hud-sep">·</span>
-            <span>Esc Pause</span>
+            <span><kbd>Esc</kbd> Pause</span>
         </div>
         <div id="hud-right">
             <button id="inv-btn" class="hud-btn" onclick="toggleInventory()">&#128198; Inventory</button>
@@ -228,7 +228,7 @@
     </div>
 
     <!-- Main canvas -->
-    <canvas id="game-canvas"></canvas>
+    <canvas id="game-canvas" style="filter:contrast(1.08) saturate(1.2) brightness(0.95)"></canvas>
 
     <!-- Interaction hint bar -->
     <div id="hint-bar"></div>
@@ -348,6 +348,9 @@
 
         </div>
     </div>
+
+    <!-- Minimap -->
+    <canvas id="minimap-canvas" width="120" height="120"></canvas>
 
     <!-- Notifications -->
     <div id="notifications"></div>

@@ -196,146 +196,58 @@ function _line(c, x0, y0, x1, y1, col) {
 //   5. Specular dew pixels (L_LEAF)
 // Variant detail added on top (same as _tc: flowers, pebbles, etc.)
 function _drawRefGrass(c, T, v) {
-    const P = PALETTE;
+    const variant = v % 4;
+    const U = Math.max(1, Math.floor(T / 16));
     const rng = _rng(v * 37 + 5);
-    const U   = Math.max(1, Math.floor(T / 16));
 
-    // ── 1. Base ─────────────────────────────────────────
-    const isDry  = v === 5;
-    const isDark = v === 6;
-    const base   = isDry ? P.M_SAND : isDark ? P.D_GREEN : P.M_FOREST;
-    c.fillStyle = base;
+    // Base fill — 4 subtly different greens
+    const bases = ['#4a7c3f', '#5a8f4a', '#3d6b34', '#4f8045'];
+    c.fillStyle = bases[variant];
     c.fillRect(0, 0, T, T);
 
-    // ── 2. Bayer shadow patches ──────────────────────────
-    if (v === 3 || v === 4) {
-        // Type B: dithered dark-green patches
-        for (let i = 0; i < 5; i++) {
-            const px = Math.floor(rng() * (T - U*8)), py = Math.floor(rng() * (T - U*8));
-            const pw = Math.floor(rng() * U*10 + U*3), ph = Math.floor(rng() * U*8 + U*2);
-            _ditherBayer(c, px, py, Math.min(pw, T-px), Math.min(ph, T-py),
-                P.M_FOREST, P.D_GREEN, 0.4);
+    if (variant === 0) {
+        // Subtle crosshatch texture at 20% opacity
+        c.fillStyle = '#2d5a2d';
+        c.globalAlpha = 0.20;
+        const step = Math.max(3, Math.floor(T / 6));
+        for (let i = step; i < T - 1; i += step) {
+            c.fillRect(i, 0, 1, T);
+            c.fillRect(0, i, T, 1);
         }
-    } else if (isDry) {
-        // Type C: dry — Bayer blend sand into base
-        _ditherBayer(c, 0, 0, T, T, P.M_SAND, P.L_STONE, 0.45);
-    } else {
-        // Type A / D: organic blob patches
-        c.fillStyle = isDark ? P.M_FOREST : P.M_MOSS;
-        for (let i = 0; i < 14; i++) {
-            const sw = Math.floor(rng() * U*5 + U);
-            const sh = Math.floor(rng() * U*4 + U);
-            c.fillRect(Math.floor(rng()*(T-sw)), Math.floor(rng()*(T-sh)), sw, sh);
-        }
-        // Bayer-dithered dark fringe in lower 40% for ground depth
-        _ditherBayer(c, 0, Math.floor(T*0.6), T, Math.floor(T*0.4),
-            base, P.D_GREEN, 0.25);
-    }
-
-    // ── 3. Scattered soil pixels (ground peeking through) ─
-    if (!isDry) {
-        c.fillStyle = P.M_CLAY;
+        c.globalAlpha = 1;
+    } else if (variant === 1) {
+        // Small scattered light and dark dot details
+        c.fillStyle = '#7ab84a';
+        for (let i = 0; i < 6; i++)
+            c.fillRect(Math.floor(rng() * (T - U*2) + U), Math.floor(rng() * (T - U*2) + U), 1, 1);
+        c.fillStyle = '#3d6b34';
         for (let i = 0; i < 4; i++)
-            c.fillRect(Math.floor(rng()*(T-2)), Math.floor(rng()*(T-2)), 1, 1);
-    }
-
-    // ── 4. Grass blades ──────────────────────────────────
-    const bladeBase = isDry ? P.M_CLAY : isDark ? P.D_GREEN : P.M_FOREST;
-    const bladeMid  = isDry ? P.M_CLAY : isDark ? P.M_FOREST : P.M_MOSS;
-    const bladeTip  = isDry ? P.L_STONE : isDark ? P.M_MOSS : P.L_LEAF;
-    const bladeCount = isDark ? 14 : (v === 3 || v === 4) ? 8 : 10;
-    for (let i = 0; i < bladeCount; i++) {
-        const bx = Math.floor(rng() * (T - U*2) + U);
-        const by = Math.floor(rng() * (T - U*5) + U*2);
-        const bh = Math.floor(rng() * U*3 + U*2);   // 2–5 px tall
-        // Shadow at base
-        c.fillStyle = bladeBase; c.fillRect(bx, by + bh - 1, 1, 1);
-        // Mid body
-        c.fillStyle = bladeMid;  c.fillRect(bx, by + 1, 1, bh - 2);
-        // Bright tip
-        c.fillStyle = bladeTip;  c.fillRect(bx, by, 1, 1);
-        // L-foot (every other blade)
-        if (i % 2 === 0) { c.fillStyle = bladeMid; c.fillRect(bx+1, by + bh - 1, 1, 1); }
-    }
-
-    // ── 5. Specular dew pixels ───────────────────────────
-    c.fillStyle = isDry ? P.L_WHITE : P.L_LEAF;
-    const dewCount = isDark ? 6 : 4;
-    for (let i = 0; i < dewCount; i++)
-        c.fillRect(Math.floor(rng()*(T-U*2)+U), Math.floor(rng()*(T-U*2)+U), 1, 1);
-
-    // ── 6. Variant detail ────────────────────────────────
-    switch (v) {
-        case 1: { // Cross flowers (pink + yellow)
-            for (let f = 0; f < 2; f++) {
-                const fx = Math.floor(rng()*(T-U*8)+U*4), fy = Math.floor(rng()*(T-U*8)+U*4);
-                const fc = f ? P.A_RARE : P.A_YELLOW;
-                c.fillStyle = fc;
-                c.fillRect(fx-1, fy, 1, 1); c.fillRect(fx+1, fy, 1, 1);
-                c.fillRect(fx, fy-1, 1, 1); c.fillRect(fx, fy+1, 1, 1);
-                c.fillStyle = P.L_WHITE; c.fillRect(fx, fy, 1, 1);
-            }
-            break;
-        }
-        case 2: { // Pebbles with 2px bevel
-            for (let p = 0; p < 5; p++) {
-                const px = Math.floor(rng()*(T-U*4)+U), py = Math.floor(rng()*(T-U*2)+U);
-                const pw = U*2+1, ph = U;
-                c.fillStyle = p%2 ? P.M_STONE : P.M_CLAY;
-                c.fillRect(px, py, pw, ph);
-                c.fillStyle = P.L_STONE; c.fillRect(px, py, pw, 1);        // top hi
-                c.fillStyle = P.D_STONE; c.fillRect(px, py+ph-1, pw, 1);   // bottom shadow
-                c.fillStyle = P.L_WHITE; c.fillRect(px, py, 1, 1);         // corner specular
-            }
-            break;
-        }
-        case 3: { // Mushroom
-            const mx = Math.floor(T*0.37), my = Math.floor(T*0.44);
-            c.fillStyle = P.S_MID;    c.fillRect(mx, my, U*2, U*3);           // stem
-            c.fillStyle = P.M_BRICK;  c.fillRect(mx-U, my-U*2, U*4, U*2);    // cap
-            c.fillStyle = P.L_PARCH;  c.fillRect(mx-U, my-U*2, U*4, 1);      // cap hi
-            c.fillStyle = P.D_BROWN;  c.fillRect(mx-U, my-1, U*4, 1);        // underside shadow
-            c.fillStyle = P.L_WHITE;  c.fillRect(mx+U, my-U*2, 1, 1);        // spot
-            c.fillRect(Math.floor(mx-U*0.5), my-U, 1, 1);
-            break;
-        }
-        case 4: { // Dense dark blade clusters
-            c.fillStyle = P.D_GREEN;
-            for (let i = 0; i < 8; i++) {
-                const bx2 = Math.floor(rng()*(T-2)), by2 = Math.floor(rng()*(T-U*4));
-                c.fillRect(bx2, by2, 1, U*2+1);
-            }
-            break;
-        }
-        case 5: { // Cracked dry earth
-            const cpx = Math.floor(rng()*T*0.5+T*0.2), cpy = Math.floor(rng()*T*0.4+T*0.3);
-            c.fillStyle = P.M_CLAY;  c.fillRect(cpx, cpy, U*3, U);
-            c.fillStyle = P.D_BROWN;
-            for (let i = 0; i < 4; i++) c.fillRect(cpx+i, cpy, 1, 1);
-            // Second crack diagonal
-            _line(c, cpx+U, cpy+U, cpx+U*2, cpy+U*2, P.D_BROWN);
-            break;
-        }
-        case 6: { // Dense dark — extra blades (already handled above) + dark fringe
-            _ditherBayer(c, 0, T-Math.floor(T*0.2), T, Math.floor(T*0.2), P.D_GREEN, P.D_VOID, 0.3);
-            break;
-        }
-        case 7: { // Clover — 3 overlapping circles + bright center
-            for (let cl = 0; cl < 2; cl++) {
-                const clx = Math.floor(rng()*(T-U*8)+U*4), cly = Math.floor(rng()*(T-U*8)+U*4);
-                // Three leaf lobes
-                _ellipse(c, clx,        cly-U*1.2, U+1, U,   P.L_LEAF);
-                _ellipse(c, clx-U*1.2,  cly+U*0.7, U+1, U,   P.L_LEAF);
-                _ellipse(c, clx+U*1.2,  cly+U*0.7, U+1, U,   P.L_LEAF);
-                // Midrib lines
-                _line(c, clx, cly, clx,       cly-U*1,  P.M_MOSS);
-                _line(c, clx, cly, clx-U,     cly+U,    P.M_MOSS);
-                _line(c, clx, cly, clx+U,     cly+U,    P.M_MOSS);
-                c.fillStyle = P.L_WHITE; c.fillRect(clx, cly, 1, 1);
-            }
-            break;
+            c.fillRect(Math.floor(rng() * (T - U*2) + U), Math.floor(rng() * (T - U*2) + U), 1, 1);
+    } else if (variant === 2) {
+        // Horizontal shadow streak across bottom quarter
+        const streakY = Math.floor(T * 0.75);
+        const streakH = Math.max(1, Math.floor(T * 0.06));
+        c.fillStyle = '#2a5530';
+        c.globalAlpha = 0.50;
+        c.fillRect(0, streakY, T, streakH);
+        c.globalAlpha = 1;
+    } else {
+        // variant 3: 2–3 tiny pebble dots with highlight
+        const count = 2 + (rng() > 0.5 ? 1 : 0);
+        for (let i = 0; i < count; i++) {
+            const px = Math.floor(rng() * (T - U*4) + U*2);
+            const py = Math.floor(rng() * (T - U*4) + U*2);
+            c.fillStyle = '#6b7c5a';
+            c.fillRect(px, py, U + 1, U);
+            c.fillStyle = '#8a9870';
+            c.fillRect(px, py, U + 1, 1);
         }
     }
+
+    // All variants: 1px darker border on bottom and right for depth
+    c.fillStyle = '#2d5224';
+    c.fillRect(0, T - 1, T, 1);
+    c.fillRect(T - 1, 0, 1, T);
 }
 
 
@@ -438,21 +350,27 @@ function _drawRefPath(c, T, v) {
 // and M_STONE/L_STONE faces instead of warm sandy browns.
 // v=0 plain  v=1 cracked  v=2 mossy  v=3 worn
 function _drawRefStonePath(c, T, v) {
-    const P   = PALETTE;
-    const gap  = Math.max(2, Math.floor(T / 18));
+    const gap  = Math.max(1, Math.floor(T / 16));
     const half = Math.floor(T / 2);
+    const rng  = _rng(v * 53 + 11);
 
-    // Grout — cool near-black stone
-    c.fillStyle = P.D_STONE;
+    // Per-variant overall tone (4 variants)
+    const tones = ['#8a8070', '#7a7060', '#9a9080', '#6a6050'];
+    const tone  = tones[v % 4];
+    const isMossy = (v % 4) === 2;
+
+    // Grout base — 1px dark lines between stones
+    c.fillStyle = '#3a3830';
     c.fillRect(0, 0, T, T);
-    if (v === 2) {
-        // Mossy mortar — moss creeping into grout lines
-        _ditherBayer(c, 0, half - gap, T, gap * 2, P.D_STONE, P.M_MOSS, 0.45);
-        _ditherBayer(c, half - gap, 0, gap * 2, T, P.D_STONE, P.M_MOSS, 0.45);
+
+    // Mossy variant: dither moss into grout lines
+    if (isMossy) {
+        _ditherBayer(c, 0, half - gap, T, gap * 2, '#3a3830', '#5a7a4a', 0.5);
+        _ditherBayer(c, half - gap, 0, gap * 2, T, '#3a3830', '#5a7a4a', 0.5);
     }
 
-    // Four cobble faces — alternating M_STONE / L_STONE (cooler than PATH's sandy tones)
-    const stoneCols = [P.M_STONE, P.L_STONE, P.M_STONE, P.L_STONE];
+    // 2×2 stone blocks with 2–3 shade subdivisions per block
+    const blockShades = ['#c0b8a8', '#a09888', '#b8b0a0', '#888070'];
     const origins = [
         [gap, gap],
         [half + gap, gap],
@@ -461,57 +379,52 @@ function _drawRefStonePath(c, T, v) {
     ];
     origins.forEach(([ox, oy], i) => {
         const sw = half - gap * 2, sh = half - gap * 2;
-        const sc = stoneCols[(v + i) % stoneCols.length];
+        if (sw < 2 || sh < 2) return;
 
-        // Base face
-        c.fillStyle = sc;
-        c.fillRect(ox, oy, sw, sh);
+        // Pick a base shade offset by variant + position for variety
+        const shade0 = blockShades[(v + i)     % blockShades.length];
+        const shade1 = blockShades[(v + i + 1) % blockShades.length];
 
-        // Worn center — Bayer-dithered lighter highlight (foot traffic)
-        _ditherBayer(c,
-            ox + Math.floor(sw * 0.25), oy + Math.floor(sh * 0.25),
-            Math.floor(sw * 0.50),      Math.floor(sh * 0.50),
-            sc, P.L_STONE, 0.20);
+        // Upper two-thirds: shade0
+        c.fillStyle = shade0;
+        c.fillRect(ox, oy, sw, Math.floor(sh * 0.65));
 
-        // 2px bevel: bright top + left edges
-        c.fillStyle = P.L_STONE;
-        c.fillRect(ox,     oy,     sw, 1);
-        c.fillRect(ox,     oy,     1, sh);
-        c.fillStyle = P.M_STONE;
-        c.fillRect(ox,     oy + 1, sw, 1);
-        c.fillRect(ox + 1, oy,     1, sh);
+        // Lower third: slightly darker shade1
+        c.fillStyle = shade1;
+        c.fillRect(ox, oy + Math.floor(sh * 0.65), sw, sh - Math.floor(sh * 0.65));
 
-        // 2px bevel: dark bottom + right edges
-        c.fillStyle = P.D_VOID;
-        c.fillRect(ox,          oy + sh - 1, sw, 1);
-        c.fillRect(ox + sw - 1, oy,          1, sh);
-        c.fillStyle = P.D_STONE;
-        c.fillRect(ox,          oy + sh - 2, sw, 1);
-        c.fillRect(ox + sw - 2, oy,          1, sh);
+        // 1px highlight top-left (lighter)
+        c.fillStyle = '#d0c8b8';
+        c.fillRect(ox, oy, sw, 1);
+        c.fillRect(ox, oy, 1, sh);
 
-        // Variant details
-        if (v === 1 || v === 3) {
-            const cx0 = ox + Math.floor(sw * 0.30), cy0 = oy + Math.floor(sh * 0.30);
-            _line(c, cx0, cy0,
-                  cx0 + Math.floor(sw * 0.35), cy0 + Math.floor(sh * 0.35), P.D_VOID);
+        // 1px shadow bottom-right (darker)
+        c.fillStyle = '#504840';
+        c.fillRect(ox, oy + sh - 1, sw, 1);
+        c.fillRect(ox + sw - 1, oy, 1, sh);
+
+        // Mossy splotch at corners on mossy variant
+        if (isMossy) {
+            c.fillStyle = '#5a7a4a';
+            c.fillRect(ox + sw - 2, oy, 2, 2);
+            c.fillRect(ox, oy + sh - 2, 2, 2);
         }
-        if (v === 2) {
-            c.fillStyle = P.M_MOSS;
-            c.fillRect(ox + sw - 2, oy + sh - 1, 2, 1);
+
+        // Crack detail on variants 1 and 3
+        if (v % 2 === 1) {
+            const cx0 = ox + Math.floor(sw * 0.3), cy0 = oy + Math.floor(sh * 0.25);
+            _line(c, cx0, cy0, cx0 + Math.floor(sw * 0.3), cy0 + Math.floor(sh * 0.35), '#3a3830');
         }
     });
 
-    // Mortar center intersection
-    c.fillStyle = P.D_STONE;
+    // Mortar intersection center
+    c.fillStyle = '#3a3830';
     c.fillRect(half - gap, half - gap, gap * 2, gap * 2);
-    c.fillStyle = P.D_VOID;
-    c.fillRect(half - 1, half - 1, 1, 1);
 
-    // South + east edge darkening
-    const edgeSz = Math.max(1, gap);
-    c.fillStyle = P.D_VOID;
-    c.fillRect(0,            T - edgeSz, T, edgeSz);
-    c.fillRect(T - edgeSz,  0,          edgeSz, T);
+    // 1px depth edge: bottom and right
+    c.fillStyle = '#504840';
+    c.fillRect(0,     T - 1, T, 1);
+    c.fillRect(T - 1, 0,     1, T);
 }
 
 
@@ -601,46 +514,61 @@ function _drawRefWall(c, T, v, subtype) {
     const U = Math.max(1, Math.floor(T / 16));
 
     if (subtype === 'EXT') {
-        // Dark weathered stone brick — D_STONE/M_STONE base, D_VOID mortar
-        c.fillStyle = P.D_STONE;
-        c.fillRect(0, 0, T, T);
-
         const brickH = Math.max(4, Math.floor(T / 5));
         const brickW = Math.max(8, Math.floor(T / 3));
-        // Horizontal mortar lines
-        c.fillStyle = P.D_VOID;
-        for (let row = brickH; row < T; row += brickH) c.fillRect(0, row, T, 1);
-        // Vertical mortar lines (offset every other row)
-        for (let row = 0; row < 5; row++) {
-            const y0 = row * brickH;
-            const offset = (row % 2) * Math.floor(brickW / 2);
-            for (let col = offset; col < T; col += brickW)
-                c.fillRect(col, y0, 1, brickH);
-        }
-        // Stone faces: M_STONE with L_STONE top highlight
-        for (let row = 0; row < 5; row++) {
+        const topFaceH = Math.max(1, Math.floor(brickH * 0.35));
+
+        // Mortar fill (dark, consistent with shadow palette)
+        c.fillStyle = '#504840';
+        c.fillRect(0, 0, T, T);
+
+        // Draw bricks — alternate offset every other row
+        for (let row = 0; row < 6; row++) {
             const y0 = row * brickH + 1;
             const bh = brickH - 2;
+            if (bh <= 0) continue;
             const offset = (row % 2) * Math.floor(brickW / 2);
-            for (let col = offset; col < T; col += brickW) {
-                const x0 = col + 1, bw = Math.min(brickW - 2, T - x0);
-                if (bw <= 0) continue;
-                c.fillStyle = P.M_STONE; c.fillRect(x0, y0, bw, bh);
-                c.fillStyle = P.L_STONE; c.fillRect(x0, y0, bw, 1);
+            for (let col = offset - brickW; col < T + brickW; col += brickW) {
+                const x0 = col + 1;
+                const bw = Math.min(brickW - 2, T - x0);
+                if (bw <= 0 || x0 >= T || x0 + bw <= 0) continue;
+                const cx0 = Math.max(0, x0), cx1 = Math.min(T, x0 + bw);
+                const cw = cx1 - cx0;
+                if (cw <= 0) continue;
+
+                // Top face (lighter — receives direct light from top-left)
+                c.fillStyle = '#b0a898';
+                c.fillRect(cx0, y0, cw, Math.min(topFaceH, bh));
+
+                // Front face (darker — faces camera)
+                if (bh > topFaceH) {
+                    c.fillStyle = '#7a7060';
+                    c.fillRect(cx0, y0 + topFaceH, cw, bh - topFaceH);
+                }
+
+                // 1px highlight on top-left edge
+                c.fillStyle = '#c0b8a8';
+                c.fillRect(cx0, y0, cw, 1);
+                if (x0 >= 0) { c.fillStyle = '#c0b8a8'; c.fillRect(cx0, y0, 1, bh); }
+
+                // 1px shadow on bottom-right edge
+                c.fillStyle = '#3a3028';
+                c.fillRect(cx0, y0 + bh - 1, cw, 1);
+                if (x0 + bw <= T) { c.fillRect(cx0 + cw - 1, y0, 1, bh); }
             }
         }
+
         if (v === 1) {
-            // Mossy — Bayer-dither M_MOSS into lower half and right patch
-            _ditherBayer(c, 0, Math.floor(T * 0.55), T, Math.floor(T * 0.45), P.D_STONE, P.M_MOSS, 0.35);
-            _ditherBayer(c, Math.floor(T * 0.6), 0, Math.floor(T * 0.4), Math.floor(T * 0.3), P.M_STONE, P.M_MOSS, 0.25);
+            // Mossy — Bayer-dither moss into lower half
+            _ditherBayer(c, 0, Math.floor(T * 0.55), T, Math.floor(T * 0.45), '#7a7060', '#5a7a4a', 0.35);
         } else if (v === 2) {
-            // Crumbling edge: dark pixels scatter along right + bottom
-            c.fillStyle = P.D_VOID;
+            // Crumbling edge: dark pixels along right + bottom
+            c.fillStyle = '#3a3028';
             for (let y = 0; y < T; y += 2) c.fillRect(T - U, y, U, 1);
             for (let x = 0; x < T; x += 3) c.fillRect(x, T - U, 1, U);
         } else if (v === 3) {
-            // Stained: dark blotch dither upper-center
-            _ditherBayer(c, Math.floor(T * 0.2), 0, Math.floor(T * 0.6), Math.floor(T * 0.4), P.D_STONE, P.D_VOID, 0.4);
+            // Stained: dithered dark blotch upper-center
+            _ditherBayer(c, Math.floor(T * 0.2), 0, Math.floor(T * 0.6), Math.floor(T * 0.4), '#7a7060', '#504840', 0.4);
         }
 
     } else if (subtype === 'DUN') {
@@ -909,37 +837,53 @@ function _drawRefStairs(c, T, up) {
 // Glow halo: Bayer-dithered A_YELLOW/transparent ring (~0.22T radius, density 0.12)
 // Background painted here so it can be blitted directly over the wall tile.
 function _drawRefTorch(c, T, frame) {
-    const P = PALETTE;
-    const U = Math.max(1, Math.floor(T / 16));
+    const U  = Math.max(1, Math.floor(T / 16));
+    const cx = Math.floor(T * 0.50);
 
-    // Stone wall background
-    c.fillStyle = P.D_STONE; c.fillRect(0, 0, T, T);
-    c.fillStyle = P.M_STONE; c.fillRect(U, U, T-U*2, T-U*2);
-    c.fillStyle = P.L_STONE; c.fillRect(U, U, T-U*2, 1);
+    // Iron wall bracket — dark grey, centered, lower-center of tile
+    const bx = Math.floor(T * 0.38), by = Math.floor(T * 0.52);
+    const bw = Math.floor(T * 0.24), bh = Math.floor(T * 0.12);
+    c.fillStyle = '#3a3a3a';
+    c.fillRect(bx, by, bw, bh);
+    c.fillStyle = '#5a5a5a';
+    c.fillRect(bx, by, bw, 1);    // highlight top
 
-    // M_CLAY iron bracket
-    const bx = Math.floor(T*0.42), by = Math.floor(T*0.50);
-    const bw = Math.floor(T*0.16), bh = Math.floor(T*0.18);
-    c.fillStyle = P.M_CLAY; c.fillRect(bx, by, bw, bh);
-    c.fillStyle = P.D_VOID; c.fillRect(bx, by, bw, 1);
+    // Torch body — brown narrow rectangle sitting in bracket
+    const tx0 = Math.floor(T * 0.46), ty0 = Math.floor(T * 0.30);
+    const tw  = Math.floor(T * 0.08), th  = Math.floor(T * 0.24);
+    c.fillStyle = '#6a4a2a';
+    c.fillRect(tx0, ty0, tw, th);
+    c.fillStyle = '#8a6a4a';
+    c.fillRect(tx0, ty0, tw, 1);   // top highlight on torch body
 
-    const fx  = Math.floor(T*0.50);
-    const fy0 = Math.floor(T*0.25) + (frame === 1 ? -1 : 0);   // 1px shift on frame 1
+    // Warm glow halo (dithered, behind flame)
+    const hr = Math.max(3, Math.floor(T * 0.20));
+    const fy = Math.floor(T * 0.22);
+    _ditherBayer(c, cx - hr, fy - hr, hr * 2, hr * 2, '#6a4a2a', '#ff8800', 0.10);
 
-    // Glow halo: Bayer-dithered A_YELLOW ring
-    const hr = Math.max(4, Math.floor(T*0.22));
-    _ditherBayer(c, fx-hr, fy0-hr, hr*2, hr*2, P.D_STONE, P.A_YELLOW, 0.12);
-
-    // Outer flame body: M_BRICK
-    _ellipse(c, fx, fy0, Math.floor(T*0.07), Math.floor(T*0.10), P.M_BRICK);
-    // Inner core: L_GOLD
-    _ellipse(c, fx, fy0+U, Math.floor(T*0.05), Math.floor(T*0.07), P.L_GOLD);
-
-    if (frame === 1) {
-        // A_YELLOW tip pixel 1px above flame
-        c.fillStyle = P.A_YELLOW;
-        c.fillRect(fx-U, fy0-U, U*2, U);
+    // Flame — 3 frames: tall narrow / medium / short wide
+    if (frame === 0) {
+        // Tall narrow teardrop
+        _ellipse(c, cx, fy,          Math.floor(T*0.060), Math.floor(T*0.105), '#ff6600');
+        _ellipse(c, cx, fy + U,      Math.floor(T*0.040), Math.floor(T*0.075), '#ffdd44');
+        c.fillStyle = '#ff2200';
+        c.fillRect(cx - 1, fy - Math.floor(T*0.105) - 1, 2, 1);
+    } else if (frame === 1) {
+        // Medium teardrop
+        _ellipse(c, cx, fy + U,      Math.floor(T*0.080), Math.floor(T*0.090), '#ff6600');
+        _ellipse(c, cx, fy + U*2,    Math.floor(T*0.055), Math.floor(T*0.065), '#ffdd44');
+        c.fillStyle = '#ff2200';
+        c.fillRect(cx - 1, fy - Math.floor(T*0.080), 2, 1);
+    } else {
+        // Short wide teardrop
+        _ellipse(c, cx, fy + U*2,    Math.floor(T*0.100), Math.floor(T*0.075), '#ff6600');
+        _ellipse(c, cx, fy + U*2,    Math.floor(T*0.065), Math.floor(T*0.050), '#ffdd44');
+        c.fillStyle = '#ff2200';
+        c.fillRect(cx - 1, fy - Math.floor(T*0.060), 2, 1);
     }
+    // Bright white core tip
+    c.fillStyle = '#ffffcc';
+    c.fillRect(cx - 1, fy + U, 2, 1);
 }
 
 

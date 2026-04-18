@@ -33,6 +33,21 @@ const WALKABLE = new Set([
     TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.BUILDING_FLOOR,
     TILE.DOOR, TILE.STAIRS, TILE.STAIRSUP,
 ]);
+const MINIMAP_COLORS = Object.freeze({
+    [TILE.GRASS]:          '#2a4a18',
+    [TILE.DIRT_PATH]:      '#6a4a28',
+    [TILE.BUILDING_FLOOR]: '#4a3820',
+    [TILE.BUILDING_WALL]:  '#1e1818',
+    [TILE.TREE]:           '#1a3808',
+    [TILE.WATER]:          '#183848',
+    [TILE.DOOR]:           '#7a5030',
+    [TILE.STAIRS]:         '#806040',
+    [TILE.STAIRSUP]:       '#806040',
+    [TILE.SIGN]:           '#6a4828',
+    [TILE.TORCH]:          '#c07830',
+    [TILE.STONE_PATH]:     '#48443c',
+    [TILE.VOID]:           '#040308',
+});
 // Tiles that animate every frame and must bypass the bg cache.
 // Only truly animated tiles belong here — static special tiles (STAIRS, STAIRSUP)
 // are baked into the bg canvas and handled by spriteRenderer.drawTile normally.
@@ -303,27 +318,21 @@ function _placeDecorations(m, biome, W, H, rng) {
                     decs.push({tx, ty, type:'stump', variant: Math.floor(rng() * 2)});
                 else if (adjTrees === 0 && rng() < 0.14)
                     decs.push({tx, ty, type:'bush',  variant: Math.floor(rng() * 3)});
-            } else if (tile === P && b === BIOME.GRASSLAND) {
-                // Phase 1/5: noise-driven sandy ground variation on the open field.
-                // variant 0 = D_GREEN moss tint (near-forest warmth)
-                // variant 1 = M_SAND sandy highlight (lighter open patches)
+            } else if (tile === G && b === BIOME.GRASSLAND) {
+                // Noise-driven grass variation — dark moss patches and scattered plants
                 const pn = _vfbm(tx * 0.45, ty * 0.45, 4447, 2);
                 if      (pn > 0.63) decs.push({tx, ty, type:'patch', variant:0}); // mossy shadow
-                else if (pn < 0.26) decs.push({tx, ty, type:'patch', variant:1}); // sandy highlight
                 else if (rng() < 0.07) decs.push({tx, ty, type:'plant', variant: Math.floor(rng() * 3)});
-            } else if (tile === P && b === BIOME.DIRT) {
-                // Phase 5: warm earth patches in sandy clearings
+            } else if (tile === G && b === BIOME.DIRT) {
+                // Light ground cover in dry clearings
                 const pn = _vfbm(tx * 0.55, ty * 0.55, 7771, 2);
-                if      (pn > 0.60) decs.push({tx, ty, type:'patch', variant:2}); // warm earth
+                if      (pn > 0.60) decs.push({tx, ty, type:'patch', variant:0}); // dark moss
                 else if (rng() < 0.05) decs.push({tx, ty, type:'plant', variant: Math.floor(rng() * 2)});
-            } else if (tile === P && b === BIOME.VILLAGE) {
-                // Phase 1: noise-driven tonal variation across the village sandy ground.
-                // Breaks up the flat monochrome appearance of the central clearing.
-                // variant 2 = M_CLAY darker worn patches (high-traffic areas)
-                // variant 1 = M_SAND lighter sandy highlights (undisturbed soil)
+            } else if (tile === G && b === BIOME.VILLAGE) {
+                // Subtle tonal variation across the village ground
                 const pn = _vfbm(tx * 0.35, ty * 0.35, 2231, 3);
-                if      (pn > 0.65) decs.push({tx, ty, type:'patch', variant:2}); // worn/darker
-                else if (pn < 0.22) decs.push({tx, ty, type:'patch', variant:1}); // sandy/lighter
+                if      (pn > 0.65) decs.push({tx, ty, type:'patch', variant:0}); // mossy darker
+                else if (rng() < 0.05) decs.push({tx, ty, type:'plant', variant: Math.floor(rng() * 3)});
             }
         }
     }
@@ -405,7 +414,7 @@ function _placeGrassFringe(m, W, H) {
 
     for (let ty = 1; ty < H - 1; ty++) {
         for (let tx = 1; tx < W - 1; tx++) {
-            if (m[ty][tx] !== P) continue; // only promote open sandy ground
+            if (m[ty][tx] !== G) continue; // only promote open ground tiles
 
             // Find nearest tree tile within Chebyshev radius 2
             let minDist = 99;
@@ -439,16 +448,16 @@ function _placeVillageTransition(m, biome, W, H, rng) {
     for (let ty = 1; ty < H - 1; ty++) {
         for (let tx = 1; tx < W - 1; tx++) {
             if (biome[ty * W + tx] !== BIOME.GRASSLAND) continue;
-            if (m[ty][tx] !== P) continue; // only open sandy ground — skip roads/buildings/fringe
+            if (m[ty][tx] !== G) continue; // only open grass tiles
 
             // Chebyshev distance to the main road spines (N-S x=21,22; E-W y=16,17)
             const dNS = Math.min(Math.abs(tx - 21), Math.abs(tx - 22));
             const dEW = Math.min(Math.abs(ty - 16), Math.abs(ty - 17));
             const rd  = Math.min(dNS, dEW);
 
-            if      (rd === 1 && rng() < 0.42) m[ty][tx] = P;  // road shoulder
-            else if (rd === 2 && rng() < 0.16) m[ty][tx] = P;  // stray footpath
-            else if (rd > 3   && rng() < 0.09) m[ty][tx] = TR; // outpost tree
+            // Scatter trees — denser further from roads for a natural treeline feel
+            if      (rd > 5  && rng() < 0.20) m[ty][tx] = TR;
+            else if (rd > 3  && rng() < 0.10) m[ty][tx] = TR;
         }
     }
 }
@@ -463,7 +472,7 @@ function _buildWornPathMap(m, W, H) {
     const worn = new Uint8Array(W * H);
     for (let ty = 0; ty < H; ty++) {
         for (let tx = 0; tx < W; tx++) {
-            if (m[ty][tx] !== P) continue;
+            if (m[ty][tx] !== SP) continue;
             if (tx === 21 || tx === 22 || ty === 16 || ty === 17) {
                 worn[ty * W + tx] = 1; // main spine
                 continue;
@@ -538,7 +547,7 @@ function buildVillageTiles() {
             _biome[_ty * W_ + _tx] = _b;
             // All non-forest biomes start as sandy PATH (warm dirt).
             // Green GRASS is placed only at the forest fringe by _placeGrassFringe().
-            m[_ty][_tx] = _b === BIOME.FOREST ? TR : P;
+            m[_ty][_tx] = _b === BIOME.FOREST ? TR : G;
         }
     }
     _villageBiomeData = _biome;
@@ -566,9 +575,9 @@ function buildVillageTiles() {
     // ── 4. Pond (NW decorative water feature) ────────────────
     //  Water: x=13–19, y=3–12  (safely west of N–S road x=21)
     fill(13,3,19,12, WA);
-    fill(12,2,20,2,  P);    // north rim path
-    fill(12,13,20,13,P);    // south rim path
-    fill(12,2,12,13, P);    // west rim path
+    fill(12,2,20,2,  SP);   // north rim path
+    fill(12,13,20,13,SP);   // south rim path
+    fill(12,2,12,13, SP);   // west rim path
     // east rim is x=20, adjacent to N–S road at x=21 (already path)
 
     // ── 5. Buildings ──────────────────────────────────────────
@@ -616,31 +625,31 @@ function buildVillageTiles() {
 
     // ── 6. Connecting paths ───────────────────────────────────
     // A south exit → E–W road
-    fill(6,12,7,16, P);
+    fill(6,12,7,16, SP);
     // Horizontal shortcut east across the NW quadrant to N–S road
-    fill(6,13,20,13, P);
+    fill(6,13,20,13, SP);
 
     // B south → E–W road
-    fill(26,10,27,16, P);
+    fill(26,10,27,16, SP);
 
     // C south → E–W road
-    fill(36,12,37,16, P);
+    fill(36,12,37,16, SP);
 
     // D north door gap (y=18) → E–W road at y=17
-    fill(6,18,7,18, P);
+    fill(6,18,7,18, SP);
     // D south step
-    fill(5,28,6,28, P);
+    fill(5,28,6,28, SP);
 
     // F east door → N–S road
-    fill(10,31,20,32, P);
+    fill(10,31,20,32, SP);
 
     // E west door → N–S road
-    fill(23,22,23,23, P);
+    fill(23,22,23,23, SP);
     // E south → G north
-    fill(29,28,31,28, P);
+    fill(29,28,31,28, SP);
 
     // H north door gap (y=18) → E–W road at y=17
-    fill(41,18,42,18, P);
+    fill(41,18,42,18, SP);
 
     // ── 7. Signs ────────────────────────────────────────────
     s(21,8,  SG);   // village welcome sign (on N–S road, y=8)
@@ -1146,6 +1155,7 @@ function rebuildDungeon() {
         moveTimer: 300 + Math.floor(Math.random() * 700),
         aggroed: false,
         alive: true,
+        hurtTimer: 0,
     }));
 }
 rebuildDungeon(); // initial build so tiles array is never empty
@@ -1322,6 +1332,7 @@ function resizeCanvas() {
     TS = Math.floor(Math.min(cW / 15, cH / 11));
     TS = Math.max(32, Math.min(TS, 64));
     lightCanvas = null; // force recreation at new size
+    _scanlinesCanvas = null; // force rebuild at new size
     invalidateTileCache(); // rebuild tile variants at new TS
     if (typeof spriteRenderer !== 'undefined') {
         spriteRenderer.invalidate();           // invalidates tileRenderer cache internally
@@ -2228,7 +2239,7 @@ function buildVariantMap(map) {
                             ((B(+1,  0) === BIOME.FOREST) ? 4 : 0) |   // S
                             ((B( 0, -1) === BIOME.FOREST) ? 8 : 0);    // W
                         v = mask ? _GRASS_EDGE_LUT[mask]
-                                 : (tx * 7 + ty * 13) & 1; // interior: variant 0 or 1
+                                 : (((tx * 2237) ^ (ty * 3181)) >>> 0) % 5; // interior: variants 0-4, no checkerboard
                         break;
                     }
 
@@ -2582,176 +2593,10 @@ function drawTile(tile, px, py, tx, ty) {
     }
 }
 
-// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
-function drawGrass(px, py, tx, ty) {
-    const P = PALETTE;
-    const s = tx*7 + ty*13;
-    const U = Math.max(1, Math.floor(TS/16));
-    const ipx = Math.floor(px), ipy = Math.floor(py);
-    // 2-tone checkerboard base (M_FOREST / M_MOSS)
-    ctx.fillStyle = (tx+ty)%2 ? P.M_FOREST : P.M_MOSS;
-    ctx.fillRect(ipx, ipy, TS, TS);
-    // 1-2 sparse grass tufts (L_LEAF)
-    ctx.fillStyle = P.L_LEAF;
-    ctx.fillRect(ipx + ((s*17)%13)*U, ipy + ((s*19+2)%10)*U, U, U*2);
-    if (s % 3 !== 0)
-        ctx.fillRect(ipx + ((s*23+5)%13)*U, ipy + ((s*29+6)%10)*U, U, U*2);
-    // Lichen patch on 1 in 8 tiles (M_LICHEN)
-    if (s % 8 === 0) {
-        ctx.fillStyle = P.M_LICHEN;
-        ctx.fillRect(ipx + ((s*5)%11)*U, ipy + ((s*11)%11)*U, U*3, U*2);
-    }
-    // Arcane flower on 1 in 20 tiles (M_ARCANE surround, A_PURPLE center)
-    if (s % 20 === 0) {
-        const fx = ipx + ((s*3+4)%12)*U, fy = ipy + ((s*7+3)%12)*U;
-        ctx.fillStyle = P.M_ARCANE;
-        ctx.fillRect(fx-U, fy-U, U*3, U*3);
-        ctx.fillStyle = P.A_PURPLE;
-        ctx.fillRect(fx, fy, U, U);
-    }
-}
-
-// DIRT_PATH — warm sandy brown, uneven edge shading, occasional pebble dots
-function drawDirtPath(px, py, tx, ty) {
-    const P = PALETTE;
-    const s = tx*11 + ty*7;
-    const gap = Math.max(1, Math.floor(TS/20));
-    const half = Math.floor(TS/2);
-    const ipx = Math.floor(px), ipy = Math.floor(py);
-    // Sandy mortar base
-    ctx.fillStyle = P.M_CLAY;
-    ctx.fillRect(ipx, ipy, TS, TS);
-    // Warm sandy paving stones with L_PARCH top highlight and D_STONE shadow
-    const stoneCols = [P.M_SAND, P.L_PARCH, P.M_CLAY, P.M_SAND];
-    const offsets = [[gap, gap],[half+gap, gap],[gap, half+gap],[half+gap, half+gap]];
-    offsets.forEach(([ox, oy], i) => {
-        const sx = ipx + ox, sy = ipy + oy;
-        const sw = half - gap*2, sh = half - gap*2;
-        ctx.fillStyle = stoneCols[(s+i) % stoneCols.length];
-        ctx.fillRect(sx, sy, sw, sh);
-        ctx.fillStyle = P.L_PARCH;
-        ctx.fillRect(sx, sy, sw, 1);
-        ctx.fillStyle = P.D_BROWN;
-        ctx.fillRect(sx, sy+sh-1, sw, 1);
-    });
-    // Pebble dots on 1 in 4 tiles
-    if (s % 4 === 0) {
-        ctx.fillStyle = P.M_STONE;
-        ctx.fillRect(ipx + ((s*7)%13)*Math.max(1,Math.floor(TS/16)),
-                     ipy + ((s*11+3)%11)*Math.max(1,Math.floor(TS/16)), 2, 1);
-    }
-}
-
-// STONE_PATH — cool gray cobblestone, individual stones with dark grout lines
-function drawStonePath(px, py, tx, ty) {
-    const P = PALETTE;
-    const s = tx*13 + ty*11;
-    const gap = Math.max(1, Math.floor(TS/18));
-    const half = Math.floor(TS/2);
-    const ipx = Math.floor(px), ipy = Math.floor(py);
-    // Cool dark gray grout base
-    ctx.fillStyle = P.D_STONE;
-    ctx.fillRect(ipx, ipy, TS, TS);
-    // Cobblestones — cool grays with slight offset for organic feel
-    const rng = _rng(s * 17 + 3);
-    const stoneCols = [P.M_STONE, P.L_STONE, P.M_SLATE, P.M_STONE];
-    const offsets = [
-        [gap + Math.floor(rng()*gap),       gap + Math.floor(rng()*gap)       ],
-        [half + gap + Math.floor(rng()*gap), gap + Math.floor(rng()*gap)       ],
-        [gap + Math.floor(rng()*gap),        half + gap + Math.floor(rng()*gap)],
-        [half + gap + Math.floor(rng()*gap), half + gap + Math.floor(rng()*gap)],
-    ];
-    offsets.forEach(([ox, oy], i) => {
-        const sw = Math.max(2, half - gap*2), sh = Math.max(2, half - gap*2);
-        ctx.fillStyle = stoneCols[(s+i) % stoneCols.length];
-        ctx.fillRect(ipx+ox, ipy+oy, sw, sh);
-        // Cool highlight top-left corner
-        ctx.fillStyle = P.L_STONE; ctx.fillRect(ipx+ox, ipy+oy, sw, 1);
-        ctx.fillStyle = P.M_STONE; ctx.fillRect(ipx+ox, ipy+oy, 1, sh);
-        // Dark grout shadow bottom-right
-        ctx.fillStyle = P.D_VOID;  ctx.fillRect(ipx+ox, ipy+oy+sh-1, sw, 1);
-        ctx.fillStyle = P.D_STONE; ctx.fillRect(ipx+ox+sw-1, ipy+oy, 1, sh);
-    });
-}
-
 // VOID — pure black null tile
 function drawVoid(px, py) {
     ctx.fillStyle = PALETTE.D_VOID;
     ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
-}
-
-// [Fix 2] Rewritten — all palette refs, no raw hex, no rgba
-function drawFloor(px, py, dark) {
-    const P = PALETTE;
-    const darkCols  = [P.D_BLUE, P.M_TEAL, P.D_VOID];
-    const lightCols = [P.M_CLAY, P.S_DARK, P.S_MID];
-    const cols = dark ? darkCols : lightCols;
-    const plankH = Math.floor(TS/3);
-    const jointX = Math.floor(px/TS) % 2 === 0 ? Math.floor(TS*.42) : Math.floor(TS*.60);
-    for (let i = 0; i < 3; i++) {
-        const py2 = Math.floor(py + i*plankH);
-        const h   = (i === 2) ? TS - 2*plankH : plankH;
-        ctx.fillStyle = cols[i];
-        ctx.fillRect(Math.floor(px), py2, TS, h);
-        ctx.fillStyle = P.L_PARCH;
-        ctx.fillRect(Math.floor(px), py2, TS, 1);              // top highlight (L_PARCH)
-        ctx.fillStyle = P.D_VOID;
-        ctx.fillRect(Math.floor(px)+jointX, py2, 1, h);        // vertical joint (D_VOID)
-    }
-}
-
-// [Fix 2] Rethemed — moody aged stone, M_AMBER top accent, M_LICHEN brick variant
-function drawWall(px, py, dark) {
-    const P = PALETTE;
-    const mortar    = dark ? P.D_BLUE  : P.D_VOID;
-    const topStrip  = dark ? P.D_BLUE  : P.M_AMBER;  // torchlit amber glow on light walls
-    const brickCols = dark
-        ? [P.D_STONE, P.M_TEAL, P.D_BLUE]
-        : [P.M_STONE, P.M_CLAY, P.M_LICHEN];          // aged crumbling stone
-    ctx.fillStyle = mortar;
-    ctx.fillRect(Math.floor(px), Math.floor(py), TS, TS);
-    ctx.fillStyle = topStrip;
-    ctx.fillRect(Math.floor(px), Math.floor(py), TS, Math.max(1, Math.floor(TS*.06)));
-    const bH = Math.floor(TS/4), bW = Math.floor(TS/2);
-    for (let row = 0; row < 4; row++) {
-        const by = Math.floor(py + row*bH);
-        const offset = (row%2) * Math.floor(bW/2);
-        for (let col = -1; col < 3; col++) {
-            const bx = Math.floor(px + col*bW + offset);
-            const x1 = Math.max(Math.floor(px)+1, bx+1);
-            const x2 = Math.min(Math.floor(px)+TS-1, bx+bW-1);
-            const y1 = by+1, y2 = by+bH-1;
-            if (x2 <= x1 || y2 <= y1) continue;
-            ctx.fillStyle = brickCols[(row+col+3) % brickCols.length];
-            ctx.fillRect(x1, y1, x2-x1, y2-y1);
-            ctx.fillStyle = P.L_STONE;           // torchlit stone highlight
-            ctx.fillRect(x1, y1, x2-x1, 1);
-            ctx.fillStyle = P.D_VOID;
-            ctx.fillRect(x1, y2-1, x2-x1, 1);
-        }
-    }
-}
-
-// [Fix 2] Rewritten — no rgba ground shadow, all palette refs, no raw hex
-function drawTree(px, py, tx, ty) {
-    const P = PALETTE;
-    drawGrass(px, py, tx, ty);
-    // Trunk (D_BROWN base, M_CLAY center strip — no rgba)
-    ctx.fillStyle = P.D_BROWN;
-    ctx.fillRect(Math.floor(px+TS*.44), Math.floor(py+TS*.44), Math.floor(TS*.12), Math.floor(TS*.22));
-    ctx.fillStyle = P.M_CLAY;
-    ctx.fillRect(Math.floor(px+TS*.46), Math.floor(py+TS*.44), Math.floor(TS*.05), Math.floor(TS*.22));
-    // Canopy arcs — palette colors only, no rgba
-    const cx2 = Math.floor(px+TS*.5), cy2 = Math.floor(py+TS*.38), r = TS*.38;
-    ctx.fillStyle = P.D_GREEN;
-    ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = P.M_FOREST;
-    ctx.beginPath(); ctx.arc(cx2, cy2 - Math.floor(r*.06), Math.floor(r*.84), 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = P.M_MOSS;
-    ctx.beginPath(); ctx.arc(cx2 - Math.floor(r*.18), cy2 - Math.floor(r*.20), Math.floor(r*.62), 0, Math.PI*2); ctx.fill();
-    // Specular rect upper-left (L_LEAF)
-    ctx.fillStyle = P.L_LEAF;
-    ctx.fillRect(Math.floor(cx2 - r*.38), Math.floor(cy2 - r*.44), Math.floor(r*.28), Math.floor(r*.22));
 }
 
 function drawWater(px, py) {
@@ -3056,6 +2901,39 @@ let _partTimer  = 0;
 // Per-type live counts — eliminates four .filter() calls in _spawnAmbient every 280ms.
 const _partCount = { firefly:0, dust:0, spark:0, leaf:0 };
 
+// Pooled ambient dust motes — persistent, wrap at viewport edges, never reallocated
+const MOTE_COUNT = 20;
+const _motes = Array.from({ length: MOTE_COUNT }, () => ({
+    x: Math.random(),  // 0–1 fraction of cW (set to real coords on first update)
+    y: Math.random(),  // 0–1 fraction of cH
+    vy: 0.10 + Math.random() * 0.14,  // drift speed (px/frame at 60fps)
+    vx: (Math.random() - 0.5) * 0.06,
+    size: Math.random() < 0.5 ? 1 : 1.5,
+    phase: Math.random() * Math.PI * 2,
+    init: false,
+}));
+function _updateMotes() {
+    for (const m of _motes) {
+        if (!m.init) { m.x = Math.random() * cW; m.y = Math.random() * cH; m.init = true; }
+        m.x += m.vx;
+        m.y -= m.vy; // drift upward
+        if (m.y < -4)  { m.y = cH + 2; m.x = Math.random() * cW; }
+        if (m.x < -4)  m.x = cW + 2;
+        if (m.x > cW + 4) m.x = -2;
+    }
+}
+function _renderMotes() {
+    ctx.save();
+    for (const m of _motes) {
+        const a = 0.18 + 0.10 * Math.sin(timeMs * 0.003 + m.phase);
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#e8e0d0';
+        ctx.beginPath(); ctx.arc(Math.round(m.x), Math.round(m.y), m.size, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+}
+
 function spawnParticle(type, x, y) {
     const r = Math.random;
     const p = { type, x, y, life:0 };
@@ -3197,10 +3075,147 @@ const _EYE_POS   = Object.freeze({
     right: Object.freeze([{x:.18, y:-.08},{x:.05, y:.10}]),
 });
 
+// ── Pixel art player sprite cache ─────────────────────────────────────
+// Keyed by "color|facing|frameIdx". Rebuilt automatically when TS changes.
+const _charCache = new Map();
+let   _charCacheTS = 0;
+
+function _buildCharFrame(color, facing, frameIdx) {
+    if (_charCacheTS !== TS) { _charCache.clear(); _charCacheTS = TS; }
+    const key = `${color}|${facing}|${frameIdx}`;
+    if (_charCache.has(key)) return _charCache.get(key);
+
+    const off = document.createElement('canvas');
+    off.width = off.height = TS;
+    const c = off.getContext('2d');
+    c.imageSmoothingEnabled = false;
+
+    const U   = Math.max(1, Math.floor(TS / 16));
+    const cx  = Math.floor(TS / 2);
+    // Walk frames 0-3: frames 1 and 3 bob 1px; idle frames 4-5: frame 5 bobs
+    const bob = (frameIdx === 1 || frameIdx === 3 || frameIdx === 5) ? -1 : 0;
+
+    const headR  = Math.max(2, Math.floor(TS * 0.145));
+    const headCY = Math.floor(TS * 0.22) + bob;
+
+    const bodyW  = Math.floor(TS * 0.44);
+    const bodyH  = Math.floor(TS * 0.32);
+    const bodyX  = cx - Math.floor(bodyW / 2);
+    const bodyY  = Math.floor(TS * 0.40) + bob;
+
+    const legW   = Math.max(1, Math.floor(TS * 0.12));
+    const legH   = Math.floor(TS * 0.22);
+    const legTopY = bodyY + bodyH - 1;
+    const leftLegX  = bodyX + U;
+    const rightLegX = bodyX + bodyW - U - legW;
+    // Walk: alternate legs forward/back on frames 1 and 3
+    const leftLegDY  = frameIdx === 1 ? -U : frameIdx === 3 ?  U : 0;
+    const rightLegDY = frameIdx === 1 ?  U : frameIdx === 3 ? -U : 0;
+
+    // Ground shadow
+    c.globalAlpha = 0.22;
+    c.fillStyle = '#000000';
+    c.fillRect(cx - Math.floor(TS*0.20), Math.floor(TS*0.84), Math.floor(TS*0.40), Math.max(1, Math.floor(TS*0.05)));
+    c.globalAlpha = 1;
+
+    // Legs (drawn under body)
+    if (facing === 'left' || facing === 'right') {
+        c.fillStyle = '#4a5a6a';
+        c.fillRect(bodyX + U, legTopY, bodyW - U*2, legH);
+        c.fillStyle = '#2a1a0a';
+        c.fillRect(bodyX + U, legTopY + legH - U, bodyW - U*2, U);
+    } else {
+        c.fillStyle = '#4a5a6a';
+        c.fillRect(leftLegX,  legTopY + leftLegDY,  legW, legH);
+        c.fillRect(rightLegX, legTopY + rightLegDY, legW, legH);
+        c.fillStyle = '#2a1a0a';
+        c.fillRect(leftLegX,  legTopY + leftLegDY  + legH - U, legW, U);
+        c.fillRect(rightLegX, legTopY + rightLegDY + legH - U, legW, U);
+    }
+
+    // Body
+    c.fillStyle = color || '#8a9aaa';
+    c.fillRect(bodyX, bodyY, bodyW, bodyH);
+
+    // Shoulders
+    const sW = Math.max(U, Math.floor(TS * 0.08));
+    c.fillStyle = color || '#8a9aaa';
+    c.fillRect(bodyX - sW, bodyY + U,       sW, Math.floor(bodyH * 0.55));
+    c.fillRect(bodyX + bodyW, bodyY + U,    sW, Math.floor(bodyH * 0.55));
+
+    // Accent collar strip
+    c.fillStyle = '#aa3030';
+    c.fillRect(bodyX + U, bodyY + U, bodyW - U*2, U);
+
+    // Body bevel: bright top-left edge, dark bottom-right edge
+    c.fillStyle = '#c0ccd8';
+    c.fillRect(bodyX, bodyY, bodyW, 1);
+    c.fillRect(bodyX, bodyY, 1, bodyH);
+    c.fillStyle = '#3a4858';
+    c.fillRect(bodyX, bodyY + bodyH - 1, bodyW, 1);
+    c.fillRect(bodyX + bodyW - 1, bodyY, 1, bodyH);
+
+    // Head: skin circle
+    c.fillStyle = '#c8a882';
+    c.beginPath(); c.arc(cx, headCY, headR, 0, Math.PI * 2); c.fill();
+
+    if (facing === 'up') {
+        // Back of head: hair covers entire head
+        c.fillStyle = '#2a1a0a';
+        c.beginPath(); c.arc(cx, headCY, headR, 0, Math.PI * 2); c.fill();
+    } else {
+        // Hair: top arc of head (counterclockwise π → 0 = upper half)
+        c.fillStyle = '#2a1a0a';
+        c.beginPath();
+        c.arc(cx, headCY, headR, Math.PI, 0, true);
+        c.lineTo(cx - headR, headCY);
+        c.fill();
+        // Eyes: direction-dependent
+        if (facing === 'down') {
+            c.fillStyle = '#ffffff';
+            c.fillRect(cx - Math.floor(headR * 0.5), headCY - Math.floor(headR * 0.1), 2, 2);
+            c.fillRect(cx + Math.floor(headR * 0.1), headCY - Math.floor(headR * 0.1), 2, 2);
+            c.fillStyle = '#503820';
+            c.fillRect(cx - 1, headCY + Math.floor(headR * 0.38), 1, 1);
+        } else if (facing === 'left') {
+            c.fillStyle = '#ffffff';
+            c.fillRect(cx - Math.floor(headR * 0.65), headCY - Math.floor(headR * 0.1), 2, 2);
+        } else {
+            c.fillStyle = '#ffffff';
+            c.fillRect(cx + Math.floor(headR * 0.35), headCY - Math.floor(headR * 0.1), 2, 2);
+        }
+    }
+
+    // Helmet strip across the top of head
+    c.fillStyle = '#7a8a9a';
+    c.fillRect(cx - headR, headCY - headR, headR * 2, Math.max(1, Math.floor(headR * 0.5)));
+    c.fillStyle = '#aabaca';
+    c.fillRect(cx - headR, headCY - headR, headR * 2, 1);
+
+    _charCache.set(key, off);
+    return off;
+}
+
 function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, walkPhase=0, isMoving=false) {
     const cx=sx+TS/2, cy=sy+TS/2, r=TS*.28, t=timeMs/1000;
 
-    // ── Walk bob: player bounces on each step; NPCs idle-sway ──
+    // Player (non-ghost): pixel art sprite blitted from cache
+    if (isPlayer && !ghost) {
+        let frameIdx;
+        if (isMoving) {
+            frameIdx = Math.floor(Math.abs(walkPhase)) % 4;
+        } else {
+            frameIdx = 4 + (Math.floor(timeMs / 166) % 2);
+        }
+        const frame = _buildCharFrame(color, facing, frameIdx);
+        ctx.drawImage(frame, Math.round(sx), Math.round(sy));
+        const hasWeapon = gs.inventory.some(i => i.questComplete === 'quest_weapon_complete');
+        if (hasWeapon) drawWeapon(cx, cy, r, facing);
+        // NPC labels never shown for player, so return early
+        return;
+    }
+
+    // NPCs and ghost characters: circle-based rendering (unchanged)
     const walkBob = isMoving ? Math.abs(Math.sin(walkPhase)) * TS * 0.055 : 0;
     const idlePhase = t * 1.1 + cx * 0.031;
     const npcBob = isPlayer ? 0 : Math.sin(idlePhase) * 1.4;
@@ -3209,64 +3224,46 @@ function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, wal
     ctx.save(); ctx.translate(0, totalBob);
     if (ghost) { ctx.globalAlpha=0.55+0.15*Math.sin(t*2.2); ctx.shadowColor='#80b0ff'; ctx.shadowBlur=18; }
 
-    // ── Feet / legs (drawn under body) ──────────────────
     {
         const [fdx,fdy] = _CHAR_DIRS[facing] || _CHAR_DIRS.down;
-        const [fpx,fpy] = [-fdy, fdx]; // perpendicular to facing
+        const [fpx,fpy] = [-fdy, fdx];
         const footR = r * 0.22;
         const footPhase = isPlayer ? walkPhase : idlePhase * 0.6;
         const footSwing = isPlayer ? (isMoving ? r * 0.38 : r * 0.08) : r * 0.13;
         const footColor = ghost ? '#8090c0' : '#2a1a0a';
-        // foot base position (bottom-center of body)
         const fbx = cx - fdx * r * 0.15;
         const fby = cy - fdy * r * 0.15;
         ctx.fillStyle = footColor;
-        // left foot
         const lx = fbx + fpx * Math.sin(footPhase) * footSwing;
         const ly = fby + fpy * Math.sin(footPhase) * footSwing;
         ctx.beginPath(); ctx.arc(lx, ly, footR, 0, Math.PI*2); ctx.fill();
-        // right foot (opposite phase)
         const rx2 = fbx + fpx * Math.sin(footPhase + Math.PI) * footSwing;
         const ry2 = fby + fpy * Math.sin(footPhase + Math.PI) * footSwing;
         ctx.beginPath(); ctx.arc(rx2, ry2, footR, 0, Math.PI*2); ctx.fill();
     }
 
-    // ── Ground shadow (squishes up slightly during bob upstroke) ─
     const shadowScale = 1 - (walkBob / (TS * 0.12)) * 0.25;
     ctx.fillStyle='rgba(0,0,0,0.28)';
     ctx.beginPath(); ctx.ellipse(cx,cy+r+3,r*.7*shadowScale,r*.22*shadowScale,0,0,Math.PI*2); ctx.fill();
-    // cloak (slightly larger circle behind body)
     const cloakC=ghost?'rgba(80,110,200,0.7)':isPlayer?(CLASS_CLOAK[gs.charClass]||'#4a2810'):'rgba(20,12,8,0.65)';
     ctx.shadowBlur=0;
-    if (isPlayer) { ctx.shadowColor=color; ctx.shadowBlur=12; }
     ctx.fillStyle=cloakC; ctx.beginPath(); ctx.arc(cx,cy+r*.1,r*1.12,0,Math.PI*2); ctx.fill();
     ctx.shadowBlur=0;
-    // body
     ctx.fillStyle=ghost?'rgba(140,180,255,0.82)':color;
     ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=1.5; ctx.stroke();
-    // armor sheen (player only)
-    if (isPlayer&&!ghost) {
-        ctx.fillStyle='rgba(255,255,255,0.13)'; ctx.beginPath(); ctx.arc(cx,cy-r*.1,r*.46,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.beginPath(); ctx.arc(cx-r*.18,cy-r*.22,r*.18,0,Math.PI*2); ctx.fill();
-    }
-    // head
     const [hox,hoy]=_HEAD_OFF[facing]||_HEAD_OFF.down;
     const hx=cx+hox*r, hy=cy+hoy*r;
     ctx.fillStyle=ghost?'#c0d0ff':'#e8cfa0';
     ctx.beginPath(); ctx.arc(hx,hy,r*.40,0,Math.PI*2); ctx.fill();
     ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1; ctx.stroke();
-    // eyes (directional)
     ctx.fillStyle=ghost?'#a0c8ff':'#281808';
     const _ep=_EYE_POS[facing]||_EYE_POS.down;
     for (let _ei=0;_ei<_ep.length;_ei++) {
         ctx.beginPath(); ctx.arc(hx+_ep[_ei].x*r,hy+_ep[_ei].y*r,r*.10,0,Math.PI*2); ctx.fill();
     }
-    // class weapon (player only — only shown after the starter weapon is picked up)
-    const hasWeapon = gs.inventory.some(i => i.questComplete === 'quest_weapon_complete');
-    if (isPlayer&&!ghost&&hasWeapon) drawWeapon(cx,cy,r,facing);
     ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
-    // name tag (NPCs only)
+
     if (!isPlayer) {
         ctx.font='11px sans-serif'; ctx.textAlign='center';
         const nw=ctx.measureText(name).width;
@@ -3328,28 +3325,123 @@ function drawWeapon(cx, cy, r, facing) {
     }
 }
 
+// ── Chest sprite cache ─────────────────────────────────────────────────
+const _chestCache  = new Map();
+let   _chestCacheTS = 0;
+
+function _buildChestFrame(isOpen) {
+    if (_chestCacheTS !== TS) { _chestCache.clear(); _chestCacheTS = TS; }
+    const key = isOpen ? 'open' : 'closed';
+    if (_chestCache.has(key)) return _chestCache.get(key);
+
+    const off = document.createElement('canvas');
+    off.width = off.height = TS;
+    const c = off.getContext('2d');
+    c.imageSmoothingEnabled = false;
+
+    const U   = Math.max(1, Math.floor(TS / 16));
+    const mid = Math.floor(TS / 2);
+
+    // Drop shadow
+    c.globalAlpha = 0.35;
+    c.fillStyle = '#0a0806';
+    c.beginPath();
+    c.ellipse(mid, mid + U * 5, U * 4, U, 0, 0, Math.PI * 2);
+    c.fill();
+    c.globalAlpha = 1;
+
+    if (!isOpen) {
+        // Outline behind everything
+        c.fillStyle = '#1a0c00';
+        c.fillRect(U,      U * 2, U * 14, U * 7);   // lid outline
+        c.fillRect(U,      U * 9, U * 14, U * 5);   // body outline
+        // Lid top face
+        c.fillStyle = '#6a3c10';
+        c.fillRect(U * 2,  U * 3, U * 12, U * 4);
+        c.fillStyle = '#8a5828';
+        c.fillRect(U * 2,  U * 3, U * 12, U);       // highlight strip
+        // Lid front face
+        c.fillStyle = '#4a2a08';
+        c.fillRect(U * 2,  U * 7, U * 12, U * 2);
+        // Body face
+        c.fillStyle = '#7a4820';
+        c.fillRect(U * 2,  U * 9, U * 12, U * 5);
+        c.fillStyle = '#5a3010';
+        c.fillRect(U * 2,  U * 12, U * 12, U * 2);  // lower shadow
+        // Metal bands
+        c.fillStyle = '#686868';
+        c.fillRect(U * 2,  U * 8,  U * 12, U);
+        c.fillRect(U * 2,  U * 11, U * 12, U);
+        c.fillStyle = '#b0b0b0';
+        c.fillRect(U * 2,  U * 8,  U * 12, Math.max(1, Math.floor(U * 0.5)));
+        // Gold latch
+        c.fillStyle = '#7a5800';
+        c.fillRect(mid - U, U * 8, U * 2, U * 3);
+        c.fillStyle = '#ffc020';
+        c.fillRect(mid - Math.floor(U * 0.5), U * 8 + Math.floor(U * 0.5), U, U * 2);
+    } else {
+        // Open lid thrown back (thin strip at top)
+        c.fillStyle = '#1a0c00';
+        c.fillRect(U,     U * 2, U * 14, U * 3);
+        c.fillStyle = '#4a2a08';
+        c.fillRect(U * 2, U * 2, U * 12, U * 2);
+        c.fillStyle = '#6a3c10';
+        c.fillRect(U * 2, U * 2, U * 12, U);
+        // Body outline
+        c.fillStyle = '#1a0c00';
+        c.fillRect(U,     U * 5, U * 14, U * 9);
+        // Interior dark void
+        c.fillStyle = '#0a0604';
+        c.fillRect(U * 2, U * 5, U * 12, U * 4);
+        // Gold glint inside
+        c.globalAlpha = 0.65;
+        c.fillStyle = '#c08000';
+        c.fillRect(mid - U * 3, U * 5, U * 6, U * 2);
+        c.globalAlpha = 1;
+        c.fillStyle = '#ffe060';
+        c.fillRect(mid - U,    U * 5, U * 2, U);
+        // Body face
+        c.fillStyle = '#7a4820';
+        c.fillRect(U * 2, U * 9,  U * 12, U * 4);
+        c.fillStyle = '#5a3010';
+        c.fillRect(U * 2, U * 12, U * 12, U);
+        // Metal band
+        c.fillStyle = '#686868';
+        c.fillRect(U * 2, U * 11, U * 12, U);
+        c.fillStyle = '#b0b0b0';
+        c.fillRect(U * 2, U * 11, U * 12, Math.max(1, Math.floor(U * 0.5)));
+    }
+
+    _chestCache.set(key, off);
+    return off;
+}
+
 function drawItem(item, sx, sy) {
-    const cx=sx+TS/2, cy=sy+TS/2, t=timeMs/1000;
-    const bob=Math.sin(t*2+cx*.08)*3, pulse=0.5+0.35*Math.sin(t*2.5);
-    ctx.save(); ctx.translate(cx,cy+bob);
-    ctx.shadowColor=item.color; ctx.shadowBlur=18+10*pulse;
-    const s=TS*.20;
-    ctx.fillStyle=item.color;
-    ctx.beginPath();
-    ctx.moveTo(0,-s*1.1); ctx.lineTo(s*.80,0); ctx.lineTo(0,s*.95); ctx.lineTo(-s*.80,0);
-    ctx.closePath(); ctx.fill();
-    // facet highlights
-    ctx.fillStyle='rgba(255,255,255,0.55)';
-    ctx.beginPath(); ctx.moveTo(0,-s*1.1); ctx.lineTo(s*.80,0); ctx.lineTo(0,-s*.15); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.25)';
-    ctx.beginPath(); ctx.moveTo(0,-s*1.1); ctx.lineTo(-s*.80,0); ctx.lineTo(0,-s*.15); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,0.10)';
-    ctx.beginPath(); ctx.moveTo(s*.80,0); ctx.lineTo(0,s*.95); ctx.lineTo(0,-s*.15); ctx.closePath(); ctx.fill();
-    ctx.shadowBlur=0; ctx.restore();
-    ctx.font='bold 10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom';
-    ctx.shadowColor=item.color; ctx.shadowBlur=5;
-    ctx.fillStyle='#f0e0c0'; ctx.fillText(item.name,cx,sy-3+bob);
-    ctx.shadowBlur=0;
+    const bob = Math.sin(timeMs * 0.002 + sx * 0.08) * 3;
+    const isOpen = Math.abs(player.x - item.x) <= 1 && Math.abs(player.y - item.y) <= 1;
+    const frame  = _buildChestFrame(isOpen);
+    const ix     = Math.round(sx);
+    const iy     = Math.round(sy + bob);
+
+    // Glow halo around chest
+    ctx.save();
+    ctx.shadowColor = isOpen ? '#ffd060' : '#c08020';
+    ctx.shadowBlur  = isOpen ? 18 : 10;
+    ctx.drawImage(frame, ix, iy);
+    ctx.restore();
+    ctx.shadowBlur  = 0;
+    ctx.shadowColor = 'transparent';
+
+    // Name label
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.shadowColor = '#c08020';
+    ctx.shadowBlur  = 5;
+    ctx.fillStyle   = '#f0e0c0';
+    ctx.fillText(item.name, ix + TS / 2, iy - 3);
+    ctx.shadowBlur  = 0;
+    ctx.shadowColor = 'transparent';
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3358,12 +3450,68 @@ function drawItem(item, sx, sy) {
 let lightCanvas = null, lightCtx2 = null;
 const _torchBuf = []; // reusable flat array [lx,ly,tx,ty,...] — avoids per-frame allocation
 
+// Scanlines overlay — pre-rendered once at startup/resize, blitted each frame
+let _scanlinesCanvas = null;
+function _buildScanlinesCanvas() {
+    _scanlinesCanvas = document.createElement('canvas');
+    _scanlinesCanvas.width  = cW;
+    _scanlinesCanvas.height = cH;
+    const sc = _scanlinesCanvas.getContext('2d');
+    sc.fillStyle = 'rgba(0,0,0,0.08)';
+    for (let y = 0; y < cH; y += 4) sc.fillRect(0, y, cW, 2);
+}
+
+// Pre-rendered light disc canvases — rebuilt when TS changes, not per-frame
+let _torchPunchDisc = null, _torchWarmDisc = null, _playerPunchDisc = null;
+let _discTS = 0;
+function _buildLightDiscs() {
+    if (_discTS === TS) return;
+    _discTS = TS;
+
+    // Torch punch disc (destination-out): white radial, radius = TS*7
+    const pr = Math.ceil(TS * 7), pd = pr * 2;
+    _torchPunchDisc = document.createElement('canvas');
+    _torchPunchDisc.width = _torchPunchDisc.height = pd;
+    const pc = _torchPunchDisc.getContext('2d');
+    const pg = pc.createRadialGradient(pr,pr,0,pr,pr,pr);
+    pg.addColorStop(0,   'rgba(255,255,255,1)');
+    pg.addColorStop(0.45,'rgba(255,255,255,0.55)');
+    pg.addColorStop(0.8, 'rgba(255,255,255,0.18)');
+    pg.addColorStop(1,   'rgba(0,0,0,0)');
+    pc.fillStyle = pg; pc.beginPath(); pc.arc(pr,pr,pr,0,Math.PI*2); pc.fill();
+
+    // Torch warm disc (screen blend): orange/red radial, radius = TS*6
+    const wr = Math.ceil(TS * 6), wd = wr * 2;
+    _torchWarmDisc = document.createElement('canvas');
+    _torchWarmDisc.width = _torchWarmDisc.height = wd;
+    const wc = _torchWarmDisc.getContext('2d');
+    const wg = wc.createRadialGradient(wr,wr,0,wr,wr,wr);
+    wg.addColorStop(0,    'rgba(255,155,35,1)');
+    wg.addColorStop(0.35, 'rgba(220,85,10,0.54)');
+    wg.addColorStop(0.70, 'rgba(160,40,0,0.19)');
+    wg.addColorStop(1,    'rgba(0,0,0,0)');
+    wc.fillStyle = wg; wc.beginPath(); wc.arc(wr,wr,wr,0,Math.PI*2); wc.fill();
+
+    // Player ambient glow disc (destination-out): radius = TS*2.5
+    const xr = Math.ceil(TS * 2.5), xd = xr * 2;
+    _playerPunchDisc = document.createElement('canvas');
+    _playerPunchDisc.width = _playerPunchDisc.height = xd;
+    const xc = _playerPunchDisc.getContext('2d');
+    const xg = xc.createRadialGradient(xr,xr,0,xr,xr,xr);
+    xg.addColorStop(0,   'rgba(255,255,255,0.52)');
+    xg.addColorStop(0.45,'rgba(255,255,255,0.29)');
+    xg.addColorStop(0.8, 'rgba(255,255,255,0.09)');
+    xg.addColorStop(1,   'rgba(0,0,0,0)');
+    xc.fillStyle = xg; xc.beginPath(); xc.arc(xr,xr,xr,0,Math.PI*2); xc.fill();
+}
+
 function ensureLightCanvas() {
     if (!lightCanvas||lightCanvas.width!==cW||lightCanvas.height!==cH) {
         lightCanvas=document.createElement('canvas');
         lightCanvas.width=cW; lightCanvas.height=cH;
         lightCtx2=lightCanvas.getContext('2d');
     }
+    _buildLightDiscs();
 }
 
 function renderLighting() {
@@ -3371,32 +3519,28 @@ function renderLighting() {
     ensureLightCanvas();
     const lc=lightCtx2, t=timeMs/1000, W=cW, H=cH;
     lc.clearRect(0,0,W,H);
-    lc.fillStyle='rgba(2,1,4,0.95)'; lc.fillRect(0,0,W,H);
+    lc.fillStyle='rgba(0,0,20,0.82)'; lc.fillRect(0,0,W,H);
     lc.globalCompositeOperation='destination-out';
 
-    function punch(lx,ly,rad,alpha,fp,fa) {
-        const fl=1+fa*Math.sin(fp), r=rad*fl;
-        const g=lc.createRadialGradient(lx,ly,0,lx,ly,r);
-        g.addColorStop(0,`rgba(255,255,255,${alpha})`);
-        g.addColorStop(0.45,`rgba(255,255,255,${alpha*.55})`);
-        g.addColorStop(0.8,`rgba(255,255,255,${alpha*.18})`);
-        g.addColorStop(1,'rgba(0,0,0,0)');
-        lc.fillStyle=g; lc.beginPath(); lc.arc(lx,ly,r,0,Math.PI*2); lc.fill();
-    }
+    // Player ambient glow — blit cached disc, no gradient creation
+    const pr = _playerPunchDisc.width >> 1;
+    const plx = Math.round(player.x*TS-cam.x+TS/2), ply = Math.round(player.y*TS-cam.y+TS/2);
+    lc.drawImage(_playerPunchDisc, plx-pr, ply-pr);
 
-    // Player carries a dim ambient glow
-    punch(player.x*TS-cam.x+TS/2, player.y*TS-cam.y+TS/2, TS*2.3, 0.52, t*5, 0.04);
-
-    // Collect torch screen-positions in one pass; reuse for both the light punch
-    // and the warm color bleed — was previously two separate loops over ~500 tiles.
+    // Collect torch positions; blit cached punch disc per torch
     const stx=Math.max(0,Math.floor(cam.x/TS)-2), sty=Math.max(0,Math.floor(cam.y/TS)-2);
     const etx=Math.min(currentMap.w-1,Math.ceil((cam.x+W)/TS)+2);
     const ety=Math.min(currentMap.h-1,Math.ceil((cam.y+H)/TS)+2);
-    _torchBuf.length = 0; // reuse module-level flat array: [lx0,ly0,tx0,ty0, lx1,...]
+    _torchBuf.length = 0;
+    const tr = _torchPunchDisc.width >> 1;
     for (let ty=sty;ty<=ety;ty++) for (let tx=stx;tx<=etx;tx++) {
         if (currentMap.tiles[ty][tx]===TILE.TORCH) {
-            const lx=tx*TS-cam.x+TS/2, ly=ty*TS-cam.y+TS/2;
-            punch(lx,ly, TS*6.5, 0.98, t*10.5+tx*2.7+ty*1.3, 0.12);
+            const lx=Math.round(tx*TS-cam.x+TS/2), ly=Math.round(ty*TS-cam.y+TS/2);
+            // Flicker: modulate radius via globalAlpha ±12%
+            const fl = 1 + 0.12*Math.sin(t*10.5+tx*2.7+ty*1.3);
+            lc.globalAlpha = fl;
+            lc.drawImage(_torchPunchDisc, lx-tr, ly-tr);
+            lc.globalAlpha = 1;
             _torchBuf.push(lx, ly, tx, ty);
         }
     }
@@ -3405,18 +3549,16 @@ function renderLighting() {
     // Draw darkness layer onto scene
     ctx.drawImage(lightCanvas,0,0);
 
-    // Warm color bleed — reuse collected positions, no second tile scan
+    // Warm color bleed — blit cached warm disc per torch with alpha-modulated flicker
     ctx.save(); ctx.globalCompositeOperation='screen';
+    const wr = _torchWarmDisc.width >> 1;
     for (let i=0; i<_torchBuf.length; i+=4) {
         const lx=_torchBuf[i], ly=_torchBuf[i+1], tx=_torchBuf[i+2];
         const fl=0.13+0.05*Math.sin(t*10.5+tx*2.7);
-        const g=ctx.createRadialGradient(lx,ly,0,lx,ly,TS*5.5);
-        g.addColorStop(0,    `rgba(255,155,35,${fl*2.4})`);
-        g.addColorStop(0.35, `rgba(220, 85,10,${fl*1.3})`);
-        g.addColorStop(0.70, `rgba(160, 40, 0,${fl*0.45})`);
-        g.addColorStop(1,    'rgba(0,0,0,0)');
-        ctx.fillStyle=g; ctx.fillRect(lx-TS*6,ly-TS*6,TS*12,TS*12);
+        ctx.globalAlpha = fl * 2.4; // match original center alpha
+        ctx.drawImage(_torchWarmDisc, lx-wr, ly-wr);
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
 }
 
@@ -3428,6 +3570,7 @@ function updateEnemies(dt) {
     if (!currentMap.enemies) return;
     for (const en of currentMap.enemies) {
         if (!en.alive) continue;
+        if (en.hurtTimer > 0) en.hurtTimer = Math.max(0, en.hurtTimer - dt);
         en.moveTimer -= dt;
         if (en.moveTimer > 0) continue;
 
@@ -3456,59 +3599,134 @@ function updateEnemies(dt) {
     }
 }
 
+// ── Pixel art enemy sprite cache ──────────────────────────────────────
+const _enemyCache  = new Map();
+let   _enemyCacheTS = 0;
+
+function _buildEnemyFrame(type, frameIdx) {
+    if (_enemyCacheTS !== TS) { _enemyCache.clear(); _enemyCacheTS = TS; }
+    const key = `${type}|${frameIdx}`;
+    if (_enemyCache.has(key)) return _enemyCache.get(key);
+
+    const off = document.createElement('canvas');
+    off.width = off.height = TS;
+    const c = off.getContext('2d');
+    c.imageSmoothingEnabled = false;
+
+    const U   = Math.max(1, Math.floor(TS / 16));
+    const mid = Math.floor(TS / 2);
+    const bob = frameIdx === 1 ? -U : 0;
+
+    if (type === 'shade') {
+        // Drop shadow beneath body
+        c.globalAlpha = 0.40;
+        c.fillStyle = '#150625';
+        c.beginPath();
+        c.ellipse(mid, mid + Math.floor(TS * 0.37), U * 4, U, 0, 0, Math.PI * 2);
+        c.fill();
+        c.globalAlpha = 1;
+
+        const by = mid + bob;
+        // Outer dark body
+        c.fillStyle = '#1a0838';
+        c.beginPath(); c.arc(mid, by, U * 5, 0, Math.PI * 2); c.fill();
+        // Mid-tone layer
+        c.fillStyle = '#2a0860';
+        c.beginPath(); c.arc(mid, by - U, U * 4, 0, Math.PI * 2); c.fill();
+        // Bright core
+        c.fillStyle = '#3a1080';
+        c.beginPath(); c.arc(mid, by - U, U * 3, 0, Math.PI * 2); c.fill();
+
+        // Wispy tendrils
+        c.fillStyle = '#1a0838';
+        c.fillRect(mid - U * 5, by + U * 3,       U * 2, U * 3);
+        c.fillRect(mid - U,     by + U * 3 + U,    U * 2, U * 2);
+        c.fillRect(mid + U * 3, by + U * 3,        U * 2, U * 3);
+
+        // Red eyes
+        const eyeY = by - U;
+        c.fillStyle = '#ff1020';
+        c.beginPath(); c.arc(mid - U * 3, eyeY, U * 1.2, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.arc(mid + U * 3, eyeY, U * 1.2, 0, Math.PI * 2); c.fill();
+        // Bright eye specular
+        c.fillStyle = '#ffaaaa';
+        c.fillRect(mid - U * 3 - U, eyeY - U, U, U);
+        c.fillRect(mid + U * 3 - U, eyeY - U, U, U);
+
+    } else { // lurker
+        // Drop shadow
+        c.globalAlpha = 0.45;
+        c.fillStyle = '#0a0806';
+        c.beginPath();
+        c.ellipse(mid, mid + Math.floor(TS * 0.38), U * 4, U, 0, 0, Math.PI * 2);
+        c.fill();
+        c.globalAlpha = 1;
+
+        // Dark outline base
+        c.fillStyle = '#2a1a10';
+        c.beginPath(); c.ellipse(mid, mid + U, U * 5, U * 4, 0, 0, Math.PI * 2); c.fill();
+        // Main brown body
+        c.fillStyle = '#5a3820';
+        c.beginPath(); c.ellipse(mid, mid, U * 4, U * 3, 0, 0, Math.PI * 2); c.fill();
+
+        // Rocky highlight patches
+        c.fillStyle = '#7a5030';
+        c.fillRect(mid - U * 4, mid - U,     U * 2, U * 2);
+        c.fillRect(mid + U * 2, mid,          U * 3, U * 2);
+        c.fillRect(mid - U,     mid - U * 3,  U * 2, U * 2);
+        // Dark crack lines
+        c.fillStyle = '#1a0e08';
+        c.fillRect(mid - U,     mid - U,      U, U * 3);
+        c.fillRect(mid + U * 3, mid - U * 2,  U, U * 2);
+
+        // Three orange eyes
+        const eyeY = mid - U;
+        c.fillStyle = '#cc5000';
+        for (let i = -1; i <= 1; i++) {
+            c.beginPath(); c.arc(mid + i * U * 3, eyeY, U * 1.2, 0, Math.PI * 2); c.fill();
+        }
+        c.fillStyle = '#ff9030';
+        for (let i = -1; i <= 1; i++) {
+            c.fillRect(mid + i * U * 3 - U, eyeY - U, U, U);
+        }
+    }
+
+    _enemyCache.set(key, off);
+    return off;
+}
+
 function drawEnemyOverworld(sx, sy, en) {
-    const cx = sx + TS/2, cy = sy + TS/2, r = TS * 0.3;
-    const t = timeMs / 1000;
-    // Aggro indicator: red glow pulsing when aggroed
+    const frameIdx = Math.floor(timeMs / 500) & 1;
+    const frame    = _buildEnemyFrame(en.type, frameIdx);
+
     if (en.aggroed) {
         ctx.save();
         ctx.shadowColor = '#ff0000';
-        ctx.shadowBlur = 12 + 6 * Math.sin(t * 6);
+        ctx.shadowBlur  = 12 + 6 * Math.sin(timeMs * 0.006);
     }
-    ctx.save();
-    if (en.type === 'shade') {
-        // Wispy cloud body — three overlapping dark circles
-        const fl = Math.sin(t * 3.1 + en.x) * 2;
-        ctx.globalAlpha = 0.88 + 0.12 * Math.sin(t * 2.2);
-        ctx.fillStyle = '#1a0838';
-        ctx.beginPath(); ctx.arc(cx, cy + fl, r * 1.1, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#2a0860';
-        ctx.beginPath(); ctx.arc(cx - r*.3, cy - r*.2 + fl, r * .9, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + r*.3, cy + r*.1 + fl, r * .85, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#3a1080';
-        ctx.beginPath(); ctx.arc(cx, cy - r*.1 + fl, r * .7, 0, Math.PI*2); ctx.fill();
-        // Glowing red eyes
-        const ep = Math.sin(t * 4) * r * 0.08;
-        ctx.fillStyle = '#ff1020'; ctx.shadowColor = '#ff1020'; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.arc(cx - r*.22, cy - r*.05 + fl + ep, r*.12, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(cx + r*.22, cy - r*.05 + fl + ep, r*.12, 0, Math.PI*2); ctx.fill();
-    } else {
-        // Cave Lurker — squat rocky body
-        ctx.fillStyle = '#2a1a10';
-        ctx.beginPath(); ctx.ellipse(cx, cy + r*.2, r * 1.2, r * .85, 0, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#5a3820';
-        ctx.beginPath(); ctx.ellipse(cx, cy, r * 1.05, r * .75, 0, 0, Math.PI*2); ctx.fill();
-        // Rocky texture patches
-        ctx.fillStyle = '#7a5030';
-        ctx.fillRect(cx - r*.7, cy - r*.3, r*.4, r*.3);
-        ctx.fillRect(cx + r*.2, cy + r*.05, r*.45, r*.25);
-        ctx.fillStyle = '#483020';
-        ctx.fillRect(cx - r*.15, cy - r*.5, r*.3, r*.22);
-        // Three orange eyes in a row
-        ctx.fillStyle = '#ff8010'; ctx.shadowColor = '#ff8010'; ctx.shadowBlur = 7;
-        for (let i = -1; i <= 1; i++)
-            ctx.beginPath(), ctx.arc(cx + i * r * .38, cy - r * .1, r * .13, 0, Math.PI*2), ctx.fill();
+    ctx.drawImage(frame, Math.round(sx), Math.round(sy));
+    if (en.aggroed) {
+        ctx.restore();
+        ctx.shadowBlur  = 0;
+        ctx.shadowColor = 'transparent';
     }
-    ctx.restore();
-    if (en.aggroed) ctx.restore();
 
-    // HP bar above enemy
-    const bw = TS * .8, bh = 5, bx = sx + TS*.1, by = sy - 10;
+    // Hurt flash: red tint overlay
+    if (en.hurtTimer > 0) {
+        const tint = en.hurtTimer / 200;
+        const ecx  = sx + TS / 2, ecy = sy + TS / 2;
+        ctx.fillStyle = `rgba(255,80,80,${(tint * 0.55).toFixed(2)})`;
+        ctx.beginPath(); ctx.arc(ecx, ecy, TS * 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // HP bar
+    const bw = TS * .8, bh = 5, bx = sx + TS * .1, by = sy - 10;
     ctx.fillStyle = '#400000'; ctx.fillRect(bx, by, bw, bh);
     const maxHp = ENEMY_DEFS[en.type].hp;
     ctx.fillStyle = en.hp / maxHp > .5 ? '#40d040' : en.hp / maxHp > .25 ? '#d0a000' : '#d02020';
     ctx.fillRect(bx, by, bw * (en.hp / maxHp), bh);
     ctx.strokeStyle = '#000'; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
+    ctx.lineWidth = 1;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3654,6 +3872,7 @@ function updateBattle(dt) {
         battle.timer -= dt;
         if (battle.timer <= 0) {
             en.hp -= battle.hitDmg;
+            if (battle.hitDmg > 0) en.hurtTimer = 200;
             if (en.hp <= 0) {
                 en.hp = 0; en.alive = false;
                 battle.phase = 'victory'; battle.timer = 2200;
@@ -4216,15 +4435,68 @@ function updateHPUI() {
     if (fill) {
         const pct = Math.max(0, gs.hp / gs.maxHp);
         fill.style.width = `${pct * 100}%`;
+        const bar = document.getElementById('hp-bar');
         if (pct > 0.60) {
             fill.style.background = 'linear-gradient(to right, #208820, #40c040)';
+            if (bar) bar.classList.remove('hp-critical');
         } else if (pct > 0.30) {
             fill.style.background = 'linear-gradient(to right, #c07010, #e0a020)';
+            if (bar) bar.classList.remove('hp-critical');
         } else {
             fill.style.background = 'linear-gradient(to right, #c02020, #e04040)';
+            if (bar) bar.classList.add('hp-critical');
         }
     }
     if (text) text.textContent = `${Math.ceil(gs.hp)}/${gs.maxHp}`;
+}
+
+// ═══════════════════════════════════════════════════════
+//  MINIMAP
+// ═══════════════════════════════════════════════════════
+let _minimapEl = null, _minimapCtx = null;
+let _minimapTileCache = null, _minimapMapId = null;
+function _buildMinimapTiles(mW, mH) {
+    _minimapTileCache = document.createElement('canvas');
+    _minimapTileCache.width = mW; _minimapTileCache.height = mH;
+    const mc = _minimapTileCache.getContext('2d');
+    mc.imageSmoothingEnabled = false;
+    const scaleX = mW / currentMap.w, scaleY = mH / currentMap.h;
+    const dotW = Math.max(1, Math.ceil(scaleX)), dotH = Math.max(1, Math.ceil(scaleY));
+    for (let ty = 0; ty < currentMap.h; ty++) {
+        for (let tx = 0; tx < currentMap.w; tx++) {
+            mc.fillStyle = MINIMAP_COLORS[currentMap.tiles[ty][tx]] || '#111';
+            mc.fillRect(Math.round(tx * scaleX), Math.round(ty * scaleY), dotW, dotH);
+        }
+    }
+    _minimapMapId = currentMap.id;
+}
+function renderMinimap() {
+    if (!_minimapEl) {
+        _minimapEl = document.getElementById('minimap-canvas');
+        if (!_minimapEl) return;
+        _minimapCtx = _minimapEl.getContext('2d');
+        _minimapCtx.imageSmoothingEnabled = false;
+    }
+    // Hide during battle or loading
+    _minimapEl.style.display = (battle.active || ui.loading) ? 'none' : 'block';
+    if (battle.active || ui.loading) return;
+    const mW = _minimapEl.width, mH = _minimapEl.height;
+    // Rebuild tile layer only on map change
+    if (!_minimapTileCache || _minimapMapId !== currentMap.id) _buildMinimapTiles(mW, mH);
+    const scaleX = mW / currentMap.w, scaleY = mH / currentMap.h;
+    _minimapCtx.clearRect(0, 0, mW, mH);
+    _minimapCtx.drawImage(_minimapTileCache, 0, 0);
+    // Player dot (white, 3×3)
+    _minimapCtx.fillStyle = '#ffffff';
+    _minimapCtx.fillRect(Math.round(player.x * scaleX) - 1, Math.round(player.y * scaleY) - 1, 3, 3);
+    // Enemy dots (red)
+    if (currentMap.enemies) {
+        _minimapCtx.fillStyle = '#ff4040';
+        for (const en of currentMap.enemies) {
+            if (!en.alive) continue;
+            _minimapCtx.fillRect(Math.round(en.x * scaleX), Math.round(en.y * scaleY), 2, 2);
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4252,18 +4524,18 @@ function render() {
     // ── Entities ──────────────────────────────────────────
     for (const item of currentMap.items) {
         if (!itemVisible(item)) continue;
-        const sx=item.x*TS-cam.x, sy=item.y*TS-cam.y;
+        const sx=Math.round(item.x*TS-cam.x), sy=Math.round(item.y*TS-cam.y);
         if (sx>-TS&&sx<cW+TS&&sy>-TS&&sy<cH+TS) drawItem(item,sx,sy);
     }
     for (const npc of currentMap.npcs) {
-        const sx=npc.x*TS-cam.x, sy=npc.y*TS-cam.y;
+        const sx=Math.round(npc.x*TS-cam.x), sy=Math.round(npc.y*TS-cam.y);
         if (sx>-TS*2&&sx<cW+TS&&sy>-TS*2&&sy<cH+TS)
             drawCharacter(sx,sy,npc.color,'down',npc.name,false,isAdjacent(npc.x,npc.y),npc.ghost);
     }
     if (currentMap.enemies) {
         for (const en of currentMap.enemies) {
             if (!en.alive) continue;
-            const sx=en.x*TS-cam.x, sy=en.y*TS-cam.y;
+            const sx=Math.round(en.x*TS-cam.x), sy=Math.round(en.y*TS-cam.y);
             if (sx>-TS*2&&sx<cW+TS*2&&sy>-TS*2&&sy<cH+TS*2)
                 drawEnemyOverworld(sx, sy, en);
         }
@@ -4274,15 +4546,20 @@ function render() {
         player.facing,'',true,false,false,player.walkPhase,player.isMoving);
 
     renderParticles();  // ambient particles (fireflies, dust, sparks, leaves)
+    _renderMotes();     // pooled atmospheric dust motes (always present)
     renderLighting();   // dynamic darkness + torch light + warm color bleed
     renderVignette();   // corner vignette in interiors
     if (typeof VQ !== 'undefined') {
         VQ.renderOutdoorTorchGlow(); // torch warm halo on lit maps
         VQ.renderColorGrade();       // warm tone + full-scene vignette
     }
+    // Scanlines — subtle atmospheric overlay, never affects HUD
+    if (!_scanlinesCanvas || _scanlinesCanvas.width !== cW || _scanlinesCanvas.height !== cH) _buildScanlinesCanvas();
+    ctx.drawImage(_scanlinesCanvas, 0, 0);
     if (battle.active) renderBattle();
     else updateHintBar();
     _perf.draw(ctx, cW); // F3 toggles on-screen FPS counter (drawn last — above all other layers)
+    renderMinimap();     // DOM canvas overlay — separate context, always last
 }
 
 function isAdjacent(nx,ny){return Math.abs(nx-player.x)+Math.abs(ny-player.y)===1;}
@@ -4822,6 +5099,8 @@ function loop(ts) {
     // JUST_PRESSED would never be cleared — clearing here prevents a key
     // press from being held over into a later frame and firing twice.
     JUST_PRESSED.clear();
+
+    _updateMotes();
 
     // Advance SpriteRenderer animations (water, torch) with the raw frame delta.
     // rawDt is capped at 50 ms above — safe to pass directly.

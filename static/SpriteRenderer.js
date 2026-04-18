@@ -172,7 +172,8 @@ class SpriteRenderer {
                 const noise = Math.sin(timeMs * 0.008 + phase)
                             + Math.sin(timeMs * 0.021 + phase * 1.63) * 0.5
                             + Math.sin(timeMs * 0.053 + phase * 0.79) * 0.3;
-                tileRenderer.draw(ctx, 'TORCH', noise > 0.1 ? 0 : 1, ipx, ipy, TS);
+                const torchFrame = noise > 0.4 ? 0 : noise > -0.3 ? 1 : 2;
+                tileRenderer.draw(ctx, 'TORCH', torchFrame, ipx, ipy, TS);
                 break;
             }
 

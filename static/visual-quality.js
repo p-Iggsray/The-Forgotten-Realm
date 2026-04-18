@@ -58,7 +58,7 @@ const VQ = (() => {
 
         // Color grade
         warmAlpha:  0.055, // warm screen overlay opacity
-        vigOutdoor: 0.18,  // vignette max-alpha outdoors
+        vigOutdoor: 0.40,  // vignette max-alpha outdoors
         vigInterior:0.54,  // vignette max-alpha in buildings
         vigDungeon: 0.70,  // vignette max-alpha in dark dungeons
 
@@ -66,6 +66,25 @@ const VQ = (() => {
         torchRadius: 4.8,  // torch glow radius in tile widths
         torchAlpha:  0.13, // peak glow alpha (screen blend)
     };
+
+    // ─── cached torch disc for outdoor glow ─────────────────────────
+    let _vqTorchDisc = null, _vqDiscTS = 0;
+    function _ensureVqDisc() {
+        if (_vqDiscTS === TS) return;
+        _vqDiscTS = TS;
+        const rad = Math.ceil(TS * C.torchRadius);
+        const d = rad * 2;
+        _vqTorchDisc = document.createElement('canvas');
+        _vqTorchDisc.width = _vqTorchDisc.height = d;
+        const dc = _vqTorchDisc.getContext('2d');
+        const g = dc.createRadialGradient(rad,rad,0,rad,rad,rad);
+        g.addColorStop(0,    'rgba(255,165,45,1)');
+        g.addColorStop(0.25, 'rgba(230,100,15,0.57)');
+        g.addColorStop(0.55, 'rgba(180,55,0,0.25)');
+        g.addColorStop(0.85, 'rgba(120,30,0,0.08)');
+        g.addColorStop(1,    'rgba(0,0,0,0)');
+        dc.fillStyle = g; dc.beginPath(); dc.arc(rad,rad,rad,0,Math.PI*2); dc.fill();
+    }
 
     // ─── tile sets (lazily initialised after game.js defines TILE) ──
     let _AO_CAST, _AO_RECV;
@@ -347,9 +366,9 @@ const VQ = (() => {
                 const v   = currentMap.variantMap
                     ? currentMap.variantMap[ty * currentMap.w + tx] & 7
                     : (tx * 7 + ty * 13) & 7;
-                const spx = Math.floor(tx * TS - cam.x);
-                const spy = Math.floor(ty * TS - cam.y);
-                ctx.drawImage(frames[v][localStep], spx, spy, TS + 1, TS + 1);
+                const spx = Math.round(tx * TS - cam.x);
+                const spy = Math.round(ty * TS - cam.y);
+                ctx.drawImage(frames[v][localStep], spx, spy, TS, TS);
             }
         }
     }
@@ -436,32 +455,23 @@ const VQ = (() => {
         if (!found) return;
 
         const t = timeMs * 0.001;
+        _ensureVqDisc();
+        const dr = _vqTorchDisc.width >> 1;
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
 
         for (let ty = sty; ty <= ety; ty++) {
             for (let tx = stx; tx <= etx; tx++) {
                 if (currentMap.tiles[ty]?.[tx] !== TILE.TORCH) continue;
-
-                const lx  = tx * TS - cam.x + TS * 0.5;
-                const ly  = ty * TS - cam.y + TS * 0.5;
-                const rad = TS * C.torchRadius;
-
-                // Flicker: sinusoidal per-torch phase so they don't pulse in sync
-                const fl  = C.torchAlpha + 0.028 * Math.sin(t * 10.5 + tx * 2.7 + ty * 1.3);
-
-                const g = ctx.createRadialGradient(lx, ly, 0, lx, ly, rad);
-                g.addColorStop(0,    `rgba(255,165,45,${fl * 2.8})`);
-                g.addColorStop(0.25, `rgba(230,100,15,${fl * 1.6})`);
-                g.addColorStop(0.55, `rgba(180, 55, 0,${fl * 0.70})`);
-                g.addColorStop(0.85, `rgba(120, 30, 0,${fl * 0.22})`);
-                g.addColorStop(1,    'rgba(0,0,0,0)');
-
-                ctx.fillStyle = g;
-                ctx.fillRect(lx - rad, ly - rad, rad * 2, rad * 2);
+                const lx = Math.round(tx * TS - cam.x + TS * 0.5);
+                const ly = Math.round(ty * TS - cam.y + TS * 0.5);
+                // Flicker via globalAlpha — disc pre-rendered at peak alpha=1
+                const fl = C.torchAlpha + 0.028 * Math.sin(t * 10.5 + tx * 2.7 + ty * 1.3);
+                ctx.globalAlpha = fl * 2.8;
+                ctx.drawImage(_vqTorchDisc, lx - dr, ly - dr);
             }
         }
-
+        ctx.globalAlpha = 1;
         ctx.restore();
     }
 
@@ -473,6 +483,7 @@ const VQ = (() => {
         _swayTimer          = 0;
         _swayBuiltWithAtlas = false;
         _cgGrd              = null; // canvas ctx recreated on resize — old gradient invalid
+        _vqDiscTS           = 0;   // rebuild torch disc at new TS
     }
 
     // ─── public API ───────────────────────────────────────────────

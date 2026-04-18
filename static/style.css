@@ -342,6 +342,7 @@ html, body {
 #game-screen {
     display: flex; flex-direction: column;
     width: 100vw; height: 100vh;
+    filter: contrast(1.08) saturate(1.15) brightness(0.97);
 }
 
 /* HUD */
@@ -357,6 +358,12 @@ html, body {
     font-family: 'Cinzel', serif; font-size: 0.85rem; color: #d4b896;
 }
 .hud-sep { color: #4a3020; }
+#hud-name, #hud-class {
+    background: rgba(0,0,0,0.50);
+    border-radius: 4px;
+    padding: 1px 7px;
+    border: 1px solid rgba(80,40,10,0.6);
+}
 .hud-hp-label { font-size: 0.72rem; color: #9a3030; font-weight: bold; letter-spacing: 1px; }
 #hp-bar {
     width: 80px; height: 10px;
@@ -369,12 +376,30 @@ html, body {
     border-radius: 2px;
     transition: width 0.3s ease;
 }
+#hp-bar.hp-critical #hp-fill {
+    animation: hp-pulse 0.9s ease-in-out infinite;
+}
+@keyframes hp-pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.55; }
+}
 #hp-text { font-size: 0.72rem; color: #c07070; min-width: 40px; }
 
 #hud-center {
     flex: 1; text-align: center;
     font-size: 0.72rem; color: #6a5040; letter-spacing: 0.5px;
     display: flex; gap: 12px; justify-content: center; align-items: center;
+}
+#hud-center kbd {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.28);
+    border-bottom: 2px solid rgba(255,255,255,0.18);
+    border-radius: 3px;
+    padding: 0 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    color: #c0a878;
+    line-height: 1.6;
 }
 
 #hud-right { display: flex; gap: 8px; align-items: center; }
@@ -608,6 +633,22 @@ html, body {
     font-size: 0.85rem; color: #5a4030;
     text-align: center; padding: 20px 0;
     font-style: italic;
+}
+
+/* ── Minimap ───────────────────────────────────────── */
+#minimap-canvas {
+    position: fixed;
+    bottom: 18px; right: 18px;
+    width: 120px; height: 120px;
+    border: 1px solid rgba(255,255,255,0.20);
+    border-radius: 3px;
+    background: rgba(0,0,10,0.75);
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    z-index: 50;
+    pointer-events: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    display: none;
 }
 
 /* ── Notifications ─────────────────────────────────── */
