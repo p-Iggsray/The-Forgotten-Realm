@@ -33,6 +33,8 @@ const WALKABLE = new Set([
     TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.BUILDING_FLOOR,
     TILE.DOOR, TILE.STAIRS, TILE.STAIRSUP,
 ]);
+const WORLD_ITEM_PLACEABLE = new Set([TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH]);
+const WEAPON_SEARCH_RADIUS = 12;
 const MINIMAP_COLORS = Object.freeze({
     [TILE.GRASS]:          '#2a4a18',
     [TILE.DIRT_PATH]:      '#6a4a28',
@@ -1433,6 +1435,12 @@ function tryMove(dx, dy, facing) {
 
 function NPCS_OK(nx, ny) {
     return !currentMap.npcs.some(n => n.x === nx && n.y === ny);
+}
+
+function isTileOccupied(x, y, excludingEnemy) {
+    if (currentMap.npcs.some(n => n.x === x && n.y === y)) return true;
+    if (currentMap.enemies?.some(e => e !== excludingEnemy && e.alive && e.x === x && e.y === y)) return true;
+    return false;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -3582,8 +3590,7 @@ function updateEnemies(dt) {
         const nx2 = en.x + mx, ny2 = en.y + my;
         if (nx2 >= 0 && nx2 < currentMap.w && ny2 >= 0 && ny2 < currentMap.h) {
             const tile = currentMap.tiles[ny2][nx2];
-            const blocked = currentMap.enemies.some(e => e !== en && e.alive && e.x === nx2 && e.y === ny2);
-            if (WALKABLE.has(tile) && !blocked) { en.x = nx2; en.y = ny2; }
+            if (WALKABLE.has(tile) && !isTileOccupied(nx2, ny2, en)) { en.x = nx2; en.y = ny2; }
         }
     }
 }
@@ -3724,7 +3731,21 @@ function drawEnemyOverworld(sx, sy, en) {
 //  BATTLE SYSTEM
 // ═══════════════════════════════════════════════════════
 function getPlayerAtk() {
-    return { Warrior:16, Rogue:13, Wizard:20, Cleric:11 }[gs.charClass] || 15;
+    return CLASS_STATS[gs.charClass]?.atk ?? 15;
+}
+
+function calculateEnemyDamage(attackerType, defenderClass) {
+    const atk = ENEMY_DEFS[attackerType].atk;
+    const def = CLASS_STATS[defenderClass]?.def ?? 0;
+    if (Math.random() < ENEMY_MISS_CHANCE) {
+        return { amount: 0, type: 'miss', mitigatedBy: 0 };
+    }
+    const isCrit = Math.random() < ENEMY_CRIT_CHANCE;
+    const base   = Math.max(Math.ceil(atk * ENEMY_DMG_FLOOR), atk - def);
+    const scaled = isCrit ? base * ENEMY_CRIT_MULT : base;
+    const variance = 1 + (Math.random() * 2 - 1) * ENEMY_DMG_VARIANCE;
+    const amount = Math.max(1, Math.round(scaled * variance));
+    return { amount, type: isCrit ? 'crit' : 'normal', mitigatedBy: Math.max(0, atk - base) };
 }
 
 function hasWeapon() {
@@ -3740,10 +3761,11 @@ function startBattle(enemy) {
     battle.itemCursor = 0;
     battle.cursorPos = 0.1;
     battle.cursorDir = 1;
-    battle.hitResult = '';
-    battle.hitDmg   = 0;
+    battle.hitResult    = '';
+    battle.hitDmg       = 0;
     battle.playerDmgTaken = 0;
-    battle.shakeTimer = 0;
+    battle.enemyHitType = 'normal';
+    battle.shakeTimer   = 0;
     battle.message  = `A wild ${enemy.name} appeared!`;
     showNotification(`A ${enemy.name} appears!`, 'danger');
 }
@@ -3916,12 +3938,16 @@ function updateBattle(dt) {
     } else if (battle.phase === 'enemy_turn') {
         battle.timer -= dt;
         if (battle.timer <= 0) {
-            battle.playerDmgTaken = ENEMY_DEFS[en.type].atk;
-            gs.hp = Math.max(0, gs.hp - battle.playerDmgTaken);
+            const dmg = calculateEnemyDamage(en.type, gs.charClass);
+            battle.playerDmgTaken = dmg.amount;
+            battle.enemyHitType   = dmg.type;
+            gs.hp = Math.max(0, gs.hp - dmg.amount);
             updateHPUI();
-            battle.shakeTimer = 500;
+            if (dmg.type !== 'miss') battle.shakeTimer = 500;
             battle.phase = 'enemy_result'; battle.timer = 1100;
-            battle.message = `${en.name} attacked for ${battle.playerDmgTaken} damage!`;
+            battle.message = dmg.type === 'miss' ? `${en.name}'s attack missed!` :
+                             dmg.type === 'crit' ? `${en.name} lands a critical hit for ${dmg.amount} damage!` :
+                                                   `${en.name} attacked for ${dmg.amount} damage!`;
         }
 
     } else if (battle.phase === 'enemy_result') {
@@ -4084,13 +4110,21 @@ function renderBattle() {
     }
     // Damage pop-up on player (enemy_result)
     if (battle.phase === 'enemy_result') {
-        const pop = 1 - battle.timer / 1100;
-        const py = PSY + PSZ * 0.1 - pop * H * 0.10;
+        const pop  = 1 - battle.timer / 1100;
+        const py   = PSY + PSZ * 0.1 - pop * H * 0.10;
+        const miss = battle.enemyHitType === 'miss';
+        const crit = battle.enemyHitType === 'crit';
         ctx.save(); ctx.globalAlpha = Math.min(1, (1 - pop) * 3);
-        ctx.font = `bold ${Math.floor(H * 0.060)}px 'Cinzel', serif`;
-        ctx.textAlign = 'center'; ctx.fillStyle = '#ff5050';
-        ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 16;
-        ctx.fillText(`-${battle.playerDmgTaken}`, PSX + PSZ / 2 + playerShakeX, py);
+        ctx.font        = `bold ${Math.floor(H * 0.060)}px 'Cinzel', serif`;
+        ctx.textAlign   = 'center';
+        ctx.fillStyle   = miss ? '#909090' : crit ? '#ffd040' : '#ff5050';
+        ctx.shadowColor = miss ? '#606060' : crit ? '#ffa000' : '#ff0000';
+        ctx.shadowBlur  = 16;
+        ctx.fillText(miss ? 'MISS' : `-${battle.playerDmgTaken}`, PSX + PSZ / 2 + playerShakeX, py);
+        if (crit) {
+            ctx.font = `bold ${Math.floor(H * 0.034)}px 'Cinzel', serif`;
+            ctx.fillText('CRIT!', PSX + PSZ / 2 + playerShakeX, py - H * 0.055);
+        }
         ctx.shadowBlur = 0; ctx.restore();
     }
 
@@ -4876,6 +4910,11 @@ const CLASS_STATS = {
     Wizard:  { atk:20, def:3,  spd:'Slow'   },
     Cleric:  { atk:11, def:10, spd:'Normal' },
 };
+const ENEMY_DMG_FLOOR    = 0.30;
+const ENEMY_DMG_VARIANCE = 0.15;
+const ENEMY_MISS_CHANCE  = 0.08;
+const ENEMY_CRIT_CHANCE  = 0.07;
+const ENEMY_CRIT_MULT    = 1.50;
 const CLASS_ICONS = { Warrior:'⚔️', Rogue:'🗡️', Wizard:'🪄', Cleric:'🔱' };
 
 function toggleInventory() {
@@ -5014,27 +5053,33 @@ function showNotification(msg,type='info') {
 // ═══════════════════════════════════════════════════════
 //  AMBIENT AUDIO
 // ═══════════════════════════════════════════════════════
-let audioCtx=null,masterGain=null,melodyTimer=null,allNodes=[],musicOn=true;
+let audioCtx=null,masterGain=null,melodyTimer=null,musicOn=true;
+let _sources=[],_processors=[];
+const MUSIC_FADE_MS=40;
 const SCALE_VILLAGE=[110,123.47,130.81,146.83,164.81,174.61,196,220,246.94,261.63,293.66,329.63,349.23,392,440];
 const SCALE_DUNGEON=[110,116.54,130.81,138.59,164.81,174.61,185,220,233.08,261.63,277.18,329.63,349.23,370,440];
 
 function startMusic() {
-    if(audioCtx)return;
-    audioCtx=new(window.AudioContext||window['webkitAudioContext'])();
+    if(masterGain)return;
+    if(!audioCtx||audioCtx.state==='closed'){
+        audioCtx=new(window.AudioContext||window['webkitAudioContext'])();
+    }else if(audioCtx.state==='suspended'){
+        audioCtx.resume();
+    }
     masterGain=audioCtx.createGain();masterGain.gain.value=((window.gameVolumePct??50)/100)*0.25;
     const delay=audioCtx.createDelay(3);delay.delayTime.value=0.45;
     const fb=audioCtx.createGain();fb.gain.value=0.42;
     const lpf=audioCtx.createBiquadFilter();lpf.type='lowpass';lpf.frequency.value=1800;
     delay.connect(lpf);lpf.connect(fb);fb.connect(delay);
     delay.connect(masterGain);masterGain.connect(audioCtx.destination);
-    allNodes.push(delay,fb,lpf);
+    _processors.push(masterGain,delay,fb,lpf);
     startWind(masterGain);startDrone(55,masterGain);
     scheduleMelody(delay,masterGain);
 }
 
-function startDrone(f,out){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=f;g.gain.value=0.055;o.connect(g);g.connect(out);o.start();allNodes.push(o,g);}
+function startDrone(f,out){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='sine';o.frequency.value=f;g.gain.value=0.055;o.connect(g);g.connect(out);o.start();_sources.push(o);_processors.push(g);}
 
-function startWind(out){const len=audioCtx.sampleRate*3,buf=audioCtx.createBuffer(1,len,audioCtx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<len;i++)d[i]=Math.random()*2-1;const src=audioCtx.createBufferSource();src.buffer=buf;src.loop=true;const flt=audioCtx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=400;flt.Q.value=0.5;const wg=audioCtx.createGain();wg.gain.value=0.04;const lfo=audioCtx.createOscillator(),lfog=audioCtx.createGain();lfo.frequency.value=0.06;lfog.gain.value=0.03;lfo.connect(lfog);lfog.connect(wg.gain);lfo.start();src.connect(flt);flt.connect(wg);wg.connect(out);src.start();allNodes.push(src,flt,wg,lfo,lfog);}
+function startWind(out){const len=audioCtx.sampleRate*3,buf=audioCtx.createBuffer(1,len,audioCtx.sampleRate),d=buf.getChannelData(0);for(let i=0;i<len;i++)d[i]=Math.random()*2-1;const src=audioCtx.createBufferSource();src.buffer=buf;src.loop=true;const flt=audioCtx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=400;flt.Q.value=0.5;const wg=audioCtx.createGain();wg.gain.value=0.04;const lfo=audioCtx.createOscillator(),lfog=audioCtx.createGain();lfo.frequency.value=0.06;lfog.gain.value=0.03;lfo.connect(lfog);lfog.connect(wg.gain);lfo.start();src.connect(flt);flt.connect(wg);wg.connect(out);src.start();_sources.push(src,lfo);_processors.push(flt,wg,lfog);}
 
 function playNote(freq,wet,dry){const now=audioCtx.currentTime,o=audioCtx.createOscillator(),e=audioCtx.createGain();o.type='sine';o.frequency.value=freq;e.gain.setValueAtTime(0,now);e.gain.linearRampToValueAtTime(0.18,now+0.05);e.gain.exponentialRampToValueAtTime(0.001,now+4.5);o.connect(e);e.connect(wet);e.connect(dry);o.start(now);o.stop(now+4.6);}
 
@@ -5048,7 +5093,25 @@ function scheduleMelody(wet,dry){
     },2800+Math.random()*2000);
 }
 
-function stopMusic(){clearInterval(melodyTimer);melodyTimer=null;allNodes.forEach(n=>{try{n.stop?n.stop():n.disconnect();}catch(e){}});allNodes=[];if(audioCtx){audioCtx.close();audioCtx=null;masterGain=null;}}
+function stopMusic(){
+    clearInterval(melodyTimer);melodyTimer=null;
+    if(!audioCtx||(!masterGain&&_sources.length===0))return;
+    const now=audioCtx.currentTime;
+    const fadeS=MUSIC_FADE_MS/1000;
+    if(masterGain){
+        masterGain.gain.cancelScheduledValues(now);
+        masterGain.gain.setValueAtTime(masterGain.gain.value,now);
+        masterGain.gain.linearRampToValueAtTime(0,now+fadeS);
+    }
+    _sources.forEach(src=>{
+        try{src.stop(now+fadeS);}catch(e){
+            if(!(e instanceof DOMException&&e.name==='InvalidStateError'))console.error('[audio] stop() error',e);
+        }
+        try{src.disconnect();}catch(_){}
+    });
+    _processors.forEach(n=>{try{n.disconnect();}catch(_){}});
+    _sources=[];_processors=[];masterGain=null;
+}
 
 // ═══════════════════════════════════════════════════════
 //  PAUSE MENU
@@ -5174,8 +5237,25 @@ const _perf = (() => {
 // spiral-of-death when the tab is backgrounded or the frame takes too long.
 const FIXED_STEP = 1000 / 60; // ~16.667 ms
 let lastTs = 0, accumulator = 0;
+let _loopRaf = 0;
+let _loopRunning = false;
+
+function stopLoop() {
+    _loopRunning = false;
+    cancelAnimationFrame(_loopRaf);
+    _loopRaf = 0;
+}
+
+function startLoop() {
+    stopLoop();
+    lastTs = 0;
+    accumulator = 0;
+    _loopRunning = true;
+    _loopRaf = requestAnimationFrame(loop);
+}
 
 function loop(ts) {
+    if (!_loopRunning) return;
     _perf.startFrame(ts);
     const rawDt = ts - lastTs;
     lastTs = ts;
@@ -5207,7 +5287,7 @@ function loop(ts) {
         spriteRenderer.advanceAnimations(Math.min(rawDt, 50));
     }
     render();
-    requestAnimationFrame(loop);
+    _loopRaf = requestAnimationFrame(loop);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -5221,28 +5301,37 @@ const STARTER_WEAPONS = {
     Cleric:  { name:'Holy Mace',     icon:'🔱',  color:'#e8c060', desc:'Blessed by the Old Gods.'             },
 };
 
+function findValidItemTile(map, cx, cy) {
+    for (let r = 0; r <= WEAPON_SEARCH_RADIUS; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+            for (let dx = -r; dx <= r; dx++) {
+                if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+                const tx = cx + dx, ty = cy + dy;
+                if (tx < 0 || tx >= map.w || ty < 0 || ty >= map.h) continue;
+                if (!WORLD_ITEM_PLACEABLE.has(map.tiles[ty]?.[tx])) continue;
+                if (map.npcs.some(n => n.x === tx && n.y === ty)) continue;
+                if (map.items.some(i => i.x === tx && i.y === ty)) continue;
+                return { x: tx, y: ty };
+            }
+        }
+    }
+    return null;
+}
+
 function placeStarterWeapon(charClass) {
     const weapon = { ...STARTER_WEAPONS[charClass] || STARTER_WEAPONS.Warrior,
                      questRequired:'quest_weapon_given',
                      questComplete:'quest_weapon_complete' };
     const sx = currentMap.playerStart.x, sy = currentMap.playerStart.y;
-    const walkable = new Set([TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH]);
-    // Try random positions in a ring of radius 4–10 around start
-    for (let attempt = 0; attempt < 60; attempt++) {
-        const angle = Math.random() * Math.PI * 2;
-        const dist  = 4 + Math.floor(Math.random() * 7);
-        const tx = Math.round(sx + Math.cos(angle) * dist);
-        const ty = Math.round(sy + Math.sin(angle) * dist);
-        if (tx<1||ty<1||tx>=currentMap.w-1||ty>=currentMap.h-1) continue;
-        const tile = currentMap.tiles[ty]?.[tx];
-        if (!walkable.has(tile)) continue;
-        if (currentMap.npcs.some(n=>n.x===tx&&n.y===ty)) continue;
-        if (currentMap.items.some(i=>i.x===tx&&i.y===ty)) continue;
-        currentMap.items.push({ ...weapon, x:tx, y:ty });
-        return;
+    const pos = findValidItemTile(currentMap, sx, sy);
+    if (pos) {
+        currentMap.items.push({ ...weapon, x: pos.x, y: pos.y });
+    } else {
+        console.warn('[placeStarterWeapon] no valid tile within radius', WEAPON_SEARCH_RADIUS, '— weapon added to inventory');
+        gs.inventory.push(weapon);
+        gs.flags['quest_weapon_complete'] = true;
+        updateQuestUI();
     }
-    // Fallback: place south of player on path
-    currentMap.items.push({ ...weapon, x:sx, y:sy+5 });
 }
 
 // ── Intro cinematic sequence ────────────────────────────
@@ -5283,6 +5372,14 @@ function playIntroSequence() {
     showLine();
 }
 
+function resetWorldState() {
+    Object.values(MAPS).forEach(map => {
+        if (map.id === 'dungeon_1') return;
+        map.items = [];
+        if (map.enemies) map.enemies = [];
+    });
+}
+
 function startGame(name,charClass) {
     gs.charName=name;gs.charClass=charClass;gs.flags={};gs.inventory=[];
     const classMaxHp={Warrior:60,Rogue:45,Wizard:35,Cleric:55};
@@ -5290,7 +5387,7 @@ function startGame(name,charClass) {
     gs.xp=0; gs.level=1;
     currentMap=MAPS.village;
     [...VILLAGE_NPCS,...GUIDE_NPCS,...DUNGEON_NPCS,...ELDER_NPCS,...BLACKSMITH_NPCS,...VEYLA_NPCS].forEach(n=>n.history=[]);
-    MAPS.village.items=[];
+    resetWorldState();
     rebuildDungeon(); // fresh procedurally generated mine every new game
     placeStarterWeapon(charClass);
     player.x=currentMap.playerStart.x; player.y=currentMap.playerStart.y; player.facing='down';
@@ -5306,8 +5403,13 @@ function startGame(name,charClass) {
     document.getElementById('hud-class').textContent=charClass;
     document.getElementById('hud-location').textContent=currentMap.name;
     updateQuestUI();updateInventoryUI();updateHPUI();
+    for (const [id, map] of Object.entries(MAPS)) {
+        if (id === 'dungeon_1') continue;
+        console.assert(map.items.length === 0 || id === 'village',
+            `[startGame] ${id}.items not empty after reset — check resetWorldState()`);
+    }
     startMusic();
-    requestAnimationFrame(loop);
+    startLoop();
     // Black intro sequence — fades out after the cinematic lines
     if (typeof fadeOverlay === 'function') fadeOverlay('out');
     playIntroSequence();
@@ -5321,6 +5423,7 @@ document.getElementById('begin-btn').addEventListener('click',()=>{
 });
 
 document.getElementById('restart-btn').addEventListener('click',()=>{
+    stopLoop();
     stopMusic();closeDialogue();closeSign();closeQuestLog();
     // Fade to black, swap back to menu, then fade in
     if (typeof fadeOverlay === 'function') {
