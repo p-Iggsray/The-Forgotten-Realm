@@ -608,7 +608,8 @@ function New-SwordIcon {
 }
 
 function Initialize-Shortcut {
-    $lnkPath = Join-Path $PSScriptRoot 'The Forgotten Realm.lnk'
+    $desktop = [System.Environment]::GetFolderPath('Desktop')
+    $lnkPath = Join-Path $desktop 'The Forgotten Realm.lnk'
     $icoPath = Join-Path $PSScriptRoot 'game-icon.ico'
     if (Test-Path $lnkPath) { return }
     try {
@@ -623,11 +624,95 @@ function Initialize-Shortcut {
     } catch { }
 }
 
+# ─── API key first-run setup ──────────────────────────────────────────────────
+function Ensure-ApiKey {
+    $envPath = Join-Path $PSScriptRoot '.env'
+
+    # Read existing key if the file is present
+    $existingKey = ''
+    if (Test-Path $envPath) {
+        $lines = Get-Content $envPath -ErrorAction SilentlyContinue
+        foreach ($line in $lines) {
+            if ($line -match '^GROQ_API_KEY\s*=\s*(.+)$') {
+                $existingKey = $Matches[1].Trim()
+                break
+            }
+        }
+    }
+    if ($existingKey.Length -gt 10) { return }  # already configured
+
+    # ── No key found — walk the user through setup ────────────────────────────
+    Write-Host ""
+    $innerWidth = 50
+    $bar        = '─' * $innerWidth
+    $titleFull  = '── First-time Setup '.PadRight($innerWidth, '─')
+    Write-Colored "  ┌$titleFull┐" -Color Yellow
+    $setupLines = @(
+        ' ',
+        '  NPC dialogue requires a free Groq API key.',
+        '  Opening console.groq.com in your browser...',
+        ' ',
+        '  1. Sign in (free — no credit card needed)',
+        '  2. Click "Create API Key"',
+        '  3. Copy the key and paste it below',
+        ' '
+    )
+    foreach ($l in $setupLines) {
+        $padded = $l.PadRight($innerWidth)
+        Write-Colored "  │" -Color Yellow -NoNewline
+        Write-Colored $padded -Color White -NoNewline
+        Write-Colored "│" -Color Yellow
+    }
+    Write-Colored "  └$bar┘" -Color Yellow
+    Write-Host ""
+
+    # Open the browser automatically
+    try { Start-Process 'https://console.groq.com' } catch { }
+
+    # Prompt for the key
+    while ($true) {
+        Write-Colored "  Paste your Groq API key: " -Color Cyan -NoNewline
+        $inputKey = Read-Host
+        $inputKey = $inputKey.Trim()
+
+        if ($inputKey.Length -lt 20) {
+            Write-Colored "  ✗  That doesn't look right — the key should be much longer. Try again." -Color Red
+            Write-Host ""
+            continue
+        }
+        if (-not $inputKey.StartsWith('gsk_')) {
+            Write-Colored "  ⚠  Groq keys usually start with 'gsk_' — are you sure this is correct?" -Color Yellow
+            Write-Colored "     Press Enter to use it anyway, or type 'retry' to re-enter: " -Color DarkGray -NoNewline
+            $confirm = Read-Host
+            if ($confirm.Trim().ToLower() -eq 'retry') {
+                Write-Host ""
+                continue
+            }
+        }
+        break
+    }
+
+    # Write (or update) the .env file, preserving any other lines
+    if (Test-Path $envPath) {
+        $existing = @(Get-Content $envPath -ErrorAction SilentlyContinue)
+        $filtered = @($existing | Where-Object { $_ -notmatch '^GROQ_API_KEY\s*=' })
+        $filtered += "GROQ_API_KEY=$inputKey"
+        [System.IO.File]::WriteAllLines($envPath, $filtered)
+    } else {
+        [System.IO.File]::WriteAllText($envPath, "GROQ_API_KEY=$inputKey`n")
+    }
+
+    Write-Host ""
+    Write-Colored "  ✓  API key saved to .env — you won't be asked again." -Color Green
+    Write-Host ""
+}
+
 # ─── Main ─────────────────────────────────────────────────────────────────────
 Initialize-Ansi
 $script:TermWidth = Get-TerminalWidth
 Initialize-Shortcut   # silent first-run: creates icon + shortcut if absent
 Show-TitleCard
+Ensure-ApiKey
 
 try {
     # Step 1 — Python
