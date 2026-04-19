@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
-Set-Location $PSScriptRoot
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $RepoRoot
 
 # ─── Script-scope state ───────────────────────────────────────────────────────
 $script:UseAnsi       = $false
@@ -308,20 +309,20 @@ function Test-PythonEnvironment {
 }
 
 function Initialize-Venv {
-    $venvPy = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
+    $venvPy = Join-Path $RepoRoot 'venv\Scripts\python.exe'
     if (-not (Test-Path $venvPy)) {
         $proc = Start-Process -FilePath $script:PythonExe `
             -ArgumentList '-m venv venv' `
             -NoNewWindow -Wait -PassThru `
-            -WorkingDirectory $PSScriptRoot
+            -WorkingDirectory $RepoRoot
         if ($proc.ExitCode -ne 0) { throw "Failed to create virtual environment." }
     }
     $script:VenvPython = $venvPy
 }
 
 function Install-Dependencies {
-    $reqPath   = Join-Path $PSScriptRoot 'requirements.txt'
-    $cachePath = Join-Path $PSScriptRoot '.deps-installed'
+    $reqPath   = Join-Path $RepoRoot 'requirements.txt'
+    $cachePath = Join-Path $RepoRoot '.deps-installed'
 
     if (-not (Test-Path $reqPath)) {
         $script:DepsStatus = 'no requirements.txt'
@@ -342,7 +343,7 @@ function Install-Dependencies {
         -ArgumentList "-m pip install -r `"$reqPath`" -q --disable-pip-version-check" `
         -NoNewWindow -Wait -PassThru `
         -RedirectStandardError $script:TempErrFile `
-        -WorkingDirectory $PSScriptRoot
+        -WorkingDirectory $RepoRoot
 
     if ($proc.ExitCode -ne 0) {
         $script:PipStderr = Get-Content $script:TempErrFile -ErrorAction SilentlyContinue |
@@ -433,7 +434,7 @@ function Start-GameServer {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName               = $script:VenvPython
     $psi.Arguments              = 'app.py'
-    $psi.WorkingDirectory       = $PSScriptRoot
+    $psi.WorkingDirectory       = $RepoRoot
     $psi.UseShellExecute        = $false
     $psi.RedirectStandardError  = $true
     $psi.RedirectStandardOutput = $false
@@ -617,7 +618,7 @@ function Initialize-Shortcut {
         $shell = New-Object -ComObject WScript.Shell
         $sc = $shell.CreateShortcut($lnkPath)
         $sc.TargetPath      = Join-Path $PSScriptRoot 'launch.bat'
-        $sc.WorkingDirectory = $PSScriptRoot
+        $sc.WorkingDirectory = $RepoRoot
         $sc.IconLocation    = "$icoPath,0"
         $sc.Description     = 'The Forgotten Realm - Eldoria Village'
         $sc.Save()
@@ -626,7 +627,7 @@ function Initialize-Shortcut {
 
 # ─── API key first-run setup ──────────────────────────────────────────────────
 function Ensure-ApiKey {
-    $envPath = Join-Path $PSScriptRoot '.env'
+    $envPath = Join-Path $RepoRoot '.env'
 
     # Read existing key if the file is present
     $existingKey = ''
@@ -733,10 +734,10 @@ try {
 
     # Step 2 — Venv
     Invoke-WithSpinner -Description "Virtual environment" -Action {
-        $venvPy = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
+        $venvPy = Join-Path $RepoRoot 'venv\Scripts\python.exe'
         if (-not (Test-Path $venvPy)) {
             $proc = Start-Process -FilePath 'python' -ArgumentList '-m venv venv' `
-                -NoNewWindow -Wait -PassThru -WorkingDirectory $PSScriptRoot
+                -NoNewWindow -Wait -PassThru -WorkingDirectory $RepoRoot
             if ($proc.ExitCode -ne 0) { throw "Failed to create virtual environment." }
         }
         $script:VenvPython = $venvPy
@@ -745,8 +746,8 @@ try {
     # Step 3 — Dependencies
     $depsDesc = "Checking dependencies"
     Invoke-WithSpinner -Description $depsDesc -Action {
-        $reqPath   = Join-Path $PSScriptRoot 'requirements.txt'
-        $cachePath = Join-Path $PSScriptRoot '.deps-installed'
+        $reqPath   = Join-Path $RepoRoot 'requirements.txt'
+        $cachePath = Join-Path $RepoRoot '.deps-installed'
         if (-not (Test-Path $reqPath)) { $script:DepsStatus = 'no requirements.txt'; return }
         if (Test-Path $cachePath) {
             $reqM   = (Get-Item $reqPath).LastWriteTimeUtc
@@ -758,7 +759,7 @@ try {
         $proc = Start-Process -FilePath $script:VenvPython `
             -ArgumentList "-m pip install -r `"$reqPath`" -q --disable-pip-version-check" `
             -NoNewWindow -Wait -PassThru -RedirectStandardError $tmpErr `
-            -WorkingDirectory $PSScriptRoot
+            -WorkingDirectory $RepoRoot
         if ($proc.ExitCode -ne 0) {
             $script:PipStderr = Get-Content $tmpErr -ErrorAction SilentlyContinue | Select-Object -Last 10
             throw "pip install failed (exit $($proc.ExitCode))"
@@ -804,7 +805,7 @@ try {
         $psi = New-Object System.Diagnostics.ProcessStartInfo
         $psi.FileName               = $script:VenvPython
         $psi.Arguments              = 'app.py'
-        $psi.WorkingDirectory       = $PSScriptRoot
+        $psi.WorkingDirectory       = $RepoRoot
         $psi.UseShellExecute        = $false
         $psi.RedirectStandardError  = $true
         $psi.RedirectStandardOutput = $false

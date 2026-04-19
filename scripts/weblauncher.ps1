@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
-Set-Location $PSScriptRoot
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $RepoRoot
 
 # ─── Script-scope state ───────────────────────────────────────────────────────
 $script:UseAnsi    = $false
@@ -344,7 +345,7 @@ function Initialize-WebShortcut {
         $shell = New-Object -ComObject WScript.Shell
         $sc = $shell.CreateShortcut($lnkPath)
         $sc.TargetPath       = Join-Path $PSScriptRoot 'weblauncher.bat'
-        $sc.WorkingDirectory = $PSScriptRoot
+        $sc.WorkingDirectory = $RepoRoot
         $sc.IconLocation     = "$icoPath,0"
         $sc.Description      = 'The Forgotten Realm - Play Online'
         $sc.Save()

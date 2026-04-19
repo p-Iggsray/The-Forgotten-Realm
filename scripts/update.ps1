@@ -4,7 +4,8 @@ $ErrorActionPreference = 'Stop'
 
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
-Set-Location $PSScriptRoot
+$RepoRoot = Split-Path $PSScriptRoot -Parent
+Set-Location $RepoRoot
 
 # ─── Script-scope state ───────────────────────────────────────────────────────
 $script:UseAnsi    = $false
@@ -507,7 +508,7 @@ try {
     $script:NewHash = (& git rev-parse --short HEAD 2>&1).Trim()
 
     # ── Step 8 — Dependency update ────────────────────────────────────────────
-    $reqPath = Join-Path $PSScriptRoot 'requirements.txt'
+    $reqPath = Join-Path $RepoRoot 'requirements.txt'
     if (Test-Path $reqPath) {
         $reqBefore = ''
         try { $reqBefore = (& git show HEAD@{1}:requirements.txt 2>&1 | Out-String).Trim() } catch { }
@@ -515,13 +516,13 @@ try {
 
         if ($reqBefore -ne $reqAfter -and $reqAfter -ne '') {
             Invoke-WithSpinner -Description "Installing updated dependencies" -Action {
-                $venvPy = Join-Path $PSScriptRoot 'venv\Scripts\python.exe'
+                $venvPy = Join-Path $RepoRoot 'venv\Scripts\python.exe'
                 if (-not (Test-Path $venvPy)) { $venvPy = 'python' }
                 $tmpErr = [System.IO.Path]::GetTempFileName()
                 $proc = Start-Process -FilePath $venvPy `
                     -ArgumentList "-m pip install -r `"$reqPath`" -q --disable-pip-version-check" `
                     -NoNewWindow -Wait -PassThru -RedirectStandardError $tmpErr `
-                    -WorkingDirectory $PSScriptRoot
+                    -WorkingDirectory $RepoRoot
                 if ($proc.ExitCode -ne 0) {
                     $errOut = Get-Content $tmpErr -ErrorAction SilentlyContinue | Select-Object -Last 5
                     Remove-Item $tmpErr -Force -ErrorAction SilentlyContinue
@@ -529,7 +530,7 @@ try {
                 }
                 Remove-Item $tmpErr -Force -ErrorAction SilentlyContinue
                 # Bust the launch.ps1 dependency cache so it re-validates next run
-                $cachePath = Join-Path $PSScriptRoot '.deps-installed'
+                $cachePath = Join-Path $RepoRoot '.deps-installed'
                 if (Test-Path $cachePath) { Remove-Item $cachePath -Force -ErrorAction SilentlyContinue }
             } | Out-Null
         } else {
