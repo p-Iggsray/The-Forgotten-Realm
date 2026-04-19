@@ -1,1 +1,31 @@
+# ── Environment ──────────────────────────────────────────
 /.env
+
+# ── Python ───────────────────────────────────────────────
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Launcher artifacts (generated on first run) ──────────
+game-icon.ico
+*.lnk
+.deps-installed
+
+# ── OS / Editor ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ── Logs & temp ──────────────────────────────────────────
+*.log
+*.tmp
