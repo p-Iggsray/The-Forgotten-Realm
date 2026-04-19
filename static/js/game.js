@@ -4612,6 +4612,9 @@ function render() {
 function isAdjacent(nx,ny){return Math.abs(nx-player.x)+Math.abs(ny-player.y)===1;}
 
 let _lastHint = null;
+let _hintBarEl = null;
+let _hintWriteCount = 0;
+let _hintWriteCounterTs = 0;
 function updateHintBar() {
     const adj=[{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
     let hint='';
@@ -4635,7 +4638,20 @@ function updateHintBar() {
         const npc=currentMap.npcs.find(n=>n.x===tx&&n.y===ty);
         if (npc) { hint=`Press E to talk to ${npc.name}`; break; }
     }
-    if (hint !== _lastHint) { _lastHint = hint; document.getElementById('hint-bar').textContent = hint; }
+    if (hint !== _lastHint) {
+        _lastHint = hint;
+        if (!_hintBarEl) _hintBarEl = document.getElementById('hint-bar');
+        _hintBarEl.textContent = hint;
+        if (window.location.hostname === 'localhost') {
+            _hintWriteCount++;
+            const now = performance.now();
+            if (now - _hintWriteCounterTs >= 1000) {
+                console.log(`[hint-bar] ${_hintWriteCount} DOM write(s) in last second`);
+                _hintWriteCount = 0;
+                _hintWriteCounterTs = now;
+            }
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════
@@ -4686,9 +4702,12 @@ function itemVisible(item) {
 
 function checkItemPickup() {
     const items=currentMap.items;
+    const before=items.length;
+    let pickupCount=0;
     for(let i=items.length-1;i>=0;i--){
         if(!itemVisible(items[i])) continue;
         if(items[i].x===player.x&&items[i].y===player.y){
+            pickupCount++;
             const item=items.splice(i,1)[0];
             gs.inventory.push(item);
             showNotification(`Found: ${item.name}`,'item');
@@ -4700,6 +4719,10 @@ function checkItemPickup() {
             }
             updateInventoryUI();
         }
+    }
+    if(window.location.hostname==='localhost'){
+        console.assert(items.length===before-pickupCount,
+            `checkItemPickup: expected ${before-pickupCount} items remaining, got ${items.length}`);
     }
 }
 
@@ -5055,6 +5078,7 @@ function showNotification(msg,type='info') {
 // ═══════════════════════════════════════════════════════
 let audioCtx=null,masterGain=null,melodyTimer=null,musicOn=true;
 let _sources=[],_processors=[];
+let _melodyWet=null,_melodyDry=null;
 const MUSIC_FADE_MS=40;
 const SCALE_VILLAGE=[110,123.47,130.81,146.83,164.81,174.61,196,220,246.94,261.63,293.66,329.63,349.23,392,440];
 const SCALE_DUNGEON=[110,116.54,130.81,138.59,164.81,174.61,185,220,233.08,261.63,277.18,329.63,349.23,370,440];
@@ -5083,7 +5107,17 @@ function startWind(out){const len=audioCtx.sampleRate*3,buf=audioCtx.createBuffe
 
 function playNote(freq,wet,dry){const now=audioCtx.currentTime,o=audioCtx.createOscillator(),e=audioCtx.createGain();o.type='sine';o.frequency.value=freq;e.gain.setValueAtTime(0,now);e.gain.linearRampToValueAtTime(0.18,now+0.05);e.gain.exponentialRampToValueAtTime(0.001,now+4.5);o.connect(e);e.connect(wet);e.connect(dry);o.start(now);o.stop(now+4.6);}
 
+function stopMelody(){
+    clearInterval(melodyTimer);
+    melodyTimer=null;
+}
+
 function scheduleMelody(wet,dry){
+    stopMelody();
+    _melodyWet=wet; _melodyDry=dry;
+    if(window.location.hostname==='localhost'){
+        console.assert(melodyTimer===null,'scheduleMelody: re-entry guard failed');
+    }
     const scale=currentMap.dark?SCALE_DUNGEON:SCALE_VILLAGE;
     [scale[0],scale[2],scale[4]].forEach(f=>playNote(f,wet,dry));
     melodyTimer=setInterval(()=>{if(!audioCtx||audioCtx.state==='closed')return;
@@ -5094,7 +5128,7 @@ function scheduleMelody(wet,dry){
 }
 
 function stopMusic(){
-    clearInterval(melodyTimer);melodyTimer=null;
+    stopMelody();
     if(!audioCtx||(!masterGain&&_sources.length===0))return;
     const now=audioCtx.currentTime;
     const fadeS=MUSIC_FADE_MS/1000;
@@ -5123,7 +5157,7 @@ function openPause() {
     if (document.getElementById('game-screen').classList.contains('hidden')) return;
     ui.paused = true;
     if (audioCtx && audioCtx.state === 'running') audioCtx.suspend();
-    clearInterval(melodyTimer); melodyTimer = null;
+    stopMelody();
     // Sync pause slider to shared volume preference
     const vol = window.gameVolumePct ?? 50;
     const slider = _pauseVol();
@@ -5135,6 +5169,7 @@ function openPause() {
 function closePause() {
     ui.paused = false;
     if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+    if(masterGain && _melodyWet && musicOn) scheduleMelody(_melodyWet,_melodyDry);
     _pauseEl().classList.add('hidden');
 }
 
