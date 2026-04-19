@@ -95,17 +95,17 @@ function Invoke-WithSpinner {
         Write-Colored "  ...  $Description" -Color Green
         try {
             & $Action
-            Write-Colored "  ✓  $Description" -Color Green
+            Write-Colored "  [+]  $Description" -Color Green
             return $true
         } catch {
-            if ($WarnOnFailure) { Write-Colored "  ⚠  $Description" -Color Yellow; return $false }
-            Write-Colored "  ✗  $Description" -Color Red
+            if ($WarnOnFailure) { Write-Colored "  [!]  $Description" -Color Yellow; return $false }
+            Write-Colored "  [X]  $Description" -Color Red
             throw
         }
     }
 
-    $frames = [char[]]@([char]0x25D0,[char]0x25D3,[char]0x25D1,[char]0x25D2)
-    Write-Host "  $($frames[0])  $Description"
+    $frames = [char[]]@('|', '/', '-', '\')
+    Write-Host "  [$($frames[0])]  $Description"
     $row = $Host.UI.RawUI.CursorPosition.Y - 1
 
     $state = [hashtable]::Synchronized(@{
@@ -124,7 +124,7 @@ function Invoke-WithSpinner {
         if ($s.Done) { return }
         $f = $s.Frames[$s.Idx % 4]
         $s.Idx++
-        $msg = "  $f  $($s.Desc)          "
+        $msg = "  [$f]  $($s.Desc)       "
         try {
             [Console]::SetCursorPosition(0, $s.Row)
             if ($s.UseAnsi) { [Console]::Write("$($s.GreenCode)$msg$($s.ResetCode)") }
@@ -139,17 +139,17 @@ function Invoke-WithSpinner {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
-        Write-Colored "  ✓  $Description                              " -Color Green
+        Write-Colored "  [+]  $Description                          " -Color Green
         return $true
     } catch {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
         if ($WarnOnFailure) {
-            Write-Colored "  ⚠  $Description                              " -Color Yellow
+            Write-Colored "  [!]  $Description                          " -Color Yellow
             return $false
         }
-        Write-Colored "  ✗  $Description                              " -Color Red
+        Write-Colored "  [X]  $Description                          " -Color Red
         throw
     }
 }
@@ -159,55 +159,55 @@ function Show-TitleCard {
     Clear-Host
     $e          = $script:ESC
     $innerWidth = 50
-    $bar        = '═' * $innerWidth
+    $bar        = '=' * $innerWidth
     $blank      = ' ' * $innerWidth
 
-    Write-Colored "  ╔$bar╗" -Color Green
-    Write-Colored "  ║$blank║" -Color Green
+    Write-Colored "  /$bar\" -Color Green
+    Write-Colored "  |$blank|" -Color Green
 
-    $title    = '⚔  THE FORGOTTEN REALM  ⚔'
+    $title    = '>>>  THE FORGOTTEN REALM  <<<'
     $pad      = [Math]::Max(0, [int](($innerWidth - $title.Length) / 2))
     $titleLine = (' ' * $pad) + $title
     $titleLine = $titleLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  |" -Color Green -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[93m$e[1m$titleLine$e[0m")
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     } else {
         Write-Host $titleLine -ForegroundColor Yellow -NoNewline
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     }
 
     $sub     = 'Play Online'
     $subPad  = [Math]::Max(0, [int](($innerWidth - $sub.Length) / 2))
     $subLine = (' ' * $subPad) + $sub
     $subLine = $subLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  |" -Color Green -NoNewline
     Write-Colored $subLine -Color DarkCyan -NoNewline
-    Write-Colored "║" -Color Green
+    Write-Colored "|" -Color Green
 
-    Write-Colored "  ║$blank║" -Color Green
-    Write-Colored "  ╚$bar╝" -Color Green
+    Write-Colored "  |$blank|" -Color Green
+    Write-Colored "  \$bar/" -Color Green
     Write-Host ""
 }
 
 function Show-ErrorBox {
     param([string]$Title, [string[]]$Lines)
     $innerWidth = 50
-    $bar        = '─' * $innerWidth
-    $titleFull  = "── $Title "
-    $titleFull  = $titleFull.PadRight($innerWidth, '─')
-    Write-Colored "  ┌$titleFull┐" -Color Red
+    $bar        = '-' * $innerWidth
+    $titleFull  = "-- $Title "
+    $titleFull  = $titleFull.PadRight($innerWidth, '-')
+    Write-Colored "  +$titleFull+" -Color Red
     foreach ($line in ($Lines | Select-Object -Last 10)) {
         if ($null -eq $line) { $line = '' }
         $padded = "  $line"
         if ($padded.Length -gt $innerWidth) { $padded = $padded.Substring(0, $innerWidth - 3) + '...' }
         $padded = $padded.PadRight($innerWidth)
-        Write-Colored "  │" -Color Red -NoNewline
+        Write-Colored "  |" -Color Red -NoNewline
         Write-Colored $padded -Color White -NoNewline
-        Write-Colored "│" -Color Red
+        Write-Colored "|" -Color Red
     }
-    Write-Colored "  └$bar┘" -Color Red
+    Write-Colored "  +$bar+" -Color Red
     Write-Host ""
 }
 
@@ -395,9 +395,9 @@ try {
         $row = $Host.UI.RawUI.CursorPosition.Y - 1
         [Console]::SetCursorPosition(0, $row)
         if ($script:ServerWarm) {
-            Write-Colored "  ✓  Server is warm ($($script:PingMs)ms)                                   " -Color Green
+            Write-Colored "  [+]  Server is warm ($($script:PingMs)ms)                                " -Color Green
         } else {
-            Write-Colored "  ⚠  Server is warming up — first load may take ~30s            " -Color Yellow
+            Write-Colored "  [!]  Server is warming up - first load may take ~30s           " -Color Yellow
         }
     } catch { }
 
@@ -405,25 +405,25 @@ try {
     if (-not $script:ServerWarm) {
         Write-Host ""
         $innerWidth = 50
-        $bar        = '─' * $innerWidth
-        $titleFull  = '── Cold Start '.PadRight($innerWidth, '─')
-        Write-Colored "  ┌$titleFull┐" -Color Yellow
+        $bar        = '-' * $innerWidth
+        $titleFull  = '-- Cold Start '.PadRight($innerWidth, '-')
+        Write-Colored "  +$titleFull+" -Color Yellow
         $warnLines = @(
             ' ',
             "  The server hasn't been visited recently.",
             '  Render spins it down after ~15 minutes of idle.',
             ' ',
-            '  The browser will open now — just wait up to 30s',
+            '  The browser will open now - just wait up to 30s',
             '  for the page to load. It only happens once.',
             ' '
         )
         foreach ($l in $warnLines) {
             $padded = $l.PadRight($innerWidth)
-            Write-Colored "  │" -Color Yellow -NoNewline
+            Write-Colored "  |" -Color Yellow -NoNewline
             Write-Colored $padded -Color White -NoNewline
-            Write-Colored "│" -Color Yellow
+            Write-Colored "|" -Color Yellow
         }
-        Write-Colored "  └$bar┘" -Color Yellow
+        Write-Colored "  +$bar+" -Color Yellow
         Write-Host ""
     }
 
@@ -436,43 +436,43 @@ try {
 
     # Success banner
     $innerWidth = 50
-    $bar        = '═' * $innerWidth
+    $bar        = '=' * $innerWidth
     $blank      = ' ' * $innerWidth
     $e          = $script:ESC
 
-    Write-Colored "  ╔$bar╗" -Color Green
-    Write-Colored "  ║$blank║" -Color Green
+    Write-Colored "  /$bar\" -Color Green
+    Write-Colored "  |$blank|" -Color Green
 
-    $doneTitle = '   ✓  Game opened in your browser!'
-    Write-Colored "  ║" -Color Green -NoNewline
+    $doneTitle = '   [+]  Game opened in your browser!'
+    Write-Colored "  |" -Color Green -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[92m$e[1m$($doneTitle.PadRight($innerWidth))$e[0m")
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     } else {
         Write-Host $doneTitle.PadRight($innerWidth) -ForegroundColor Green -NoNewline
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     }
 
-    Write-Colored "  ║$blank║" -Color Green
+    Write-Colored "  |$blank|" -Color Green
 
     $urlLine = "   $GAME_URL"
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  |" -Color Green -NoNewline
     Write-Colored $urlLine.PadRight($innerWidth) -Color Cyan -NoNewline
-    Write-Colored "║" -Color Green
+    Write-Colored "|" -Color Green
 
-    Write-Colored "  ║$blank║" -Color Green
+    Write-Colored "  |$blank|" -Color Green
 
     $hintLine = if ($script:ServerWarm) {
-        '   Server is live — enjoy the game!'
+        '   Server is live - enjoy the game!'
     } else {
-        '   Page loading — wait up to 30s on first visit'
+        '   Page loading - wait up to 30s on first visit'
     }
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  |" -Color Green -NoNewline
     Write-Colored $hintLine.PadRight($innerWidth) -Color DarkGray -NoNewline
-    Write-Colored "║" -Color Green
+    Write-Colored "|" -Color Green
 
-    Write-Colored "  ║$blank║" -Color Green
-    Write-Colored "  ╚$bar╝" -Color Green
+    Write-Colored "  |$blank|" -Color Green
+    Write-Colored "  \$bar/" -Color Green
     Write-Host ""
 
 } catch {

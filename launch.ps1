@@ -93,9 +93,9 @@ function New-Box {
         [int]$InnerWidth     = 0
     )
     if ($Style -eq 'Double') {
-        $tl='╔'; $tr='╗'; $bl='╚'; $br='╝'; $h='═'; $v='║'
+        $tl='/'; $tr='\'; $bl='\'; $br='/'; $h='='; $v='|'
     } else {
-        $tl='┌'; $tr='┐'; $bl='└'; $br='┘'; $h='─'; $v='│'
+        $tl='+'; $tr='+'; $bl='+'; $br='+'; $h='-'; $v='|'
     }
     if ($InnerWidth -lt 1) {
         $maxLen = ($Lines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
@@ -118,35 +118,35 @@ function Show-TitleCard {
     Clear-Host
     $e = $script:ESC
     $innerWidth = 50
-    $bar = '═' * $innerWidth
+    $bar = '=' * $innerWidth
     $blank = ' ' * $innerWidth
 
-    Write-Colored "  ╔$bar╗" -Color Cyan
-    Write-Colored "  ║$blank║" -Color Cyan
+    Write-Colored "  /$bar\" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
     # Title line — Yellow bold
-    $title = '⚔  THE FORGOTTEN REALM  ⚔'
+    $title = '>>>  THE FORGOTTEN REALM  <<<'
     $pad   = [Math]::Max(0, [int](($innerWidth - $title.Length) / 2))
     $titleLine = (' ' * $pad) + $title
     $titleLine = $titleLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[93m$e[1m$titleLine$e[0m")
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     } else {
         Write-Host $titleLine -ForegroundColor Yellow -NoNewline
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     }
     # Subtitle
     $sub     = 'Eldoria Village'
     $subPad  = [Math]::Max(0, [int](($innerWidth - $sub.Length) / 2))
     $subLine = (' ' * $subPad) + $sub
     $subLine = $subLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     Write-Colored $subLine -Color DarkCyan -NoNewline
-    Write-Colored "║" -Color Cyan
+    Write-Colored "|" -Color Cyan
 
-    Write-Colored "  ║$blank║" -Color Cyan
-    Write-Colored "  ╚$bar╝" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
+    Write-Colored "  \$bar/" -Color Cyan
     Write-Host ""
 }
 
@@ -164,11 +164,11 @@ function Show-SuccessBanner {
         " "
     )
     $innerWidth = [Math]::Max(50, ($lines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum + 1)
-    $bar = '─' * $innerWidth
-    Write-Colored "  ┌$bar┐" -Color Green
+    $bar = '-' * $innerWidth
+    Write-Colored "  +$bar+" -Color Green
     foreach ($line in $lines) {
         $padded = $line.PadRight($innerWidth)
-        Write-Colored "  │" -Color Green -NoNewline
+        Write-Colored "  |" -Color Green -NoNewline
         if ($line -match 'Game is running') {
             $e = $script:ESC
             if ($script:UseAnsi) {
@@ -183,35 +183,35 @@ function Show-SuccessBanner {
         } else {
             Write-Colored $padded -Color White -NoNewline
         }
-        Write-Colored "│" -Color Green
+        Write-Colored "|" -Color Green
     }
-    Write-Colored "  └$bar┘" -Color Green
+    Write-Colored "  +$bar+" -Color Green
     Write-Host ""
 }
 
 function Show-ErrorBox {
     param([string]$Title, [string[]]$Lines)
     $innerWidth = 50
-    $bar = '─' * $innerWidth
-    $titleFull = "── $Title "
-    $titleFull = $titleFull.PadRight($innerWidth, '─')
-    Write-Colored "  ┌$titleFull┐" -Color Red
+    $bar = '-' * $innerWidth
+    $titleFull = "-- $Title "
+    $titleFull = $titleFull.PadRight($innerWidth, '-')
+    Write-Colored "  +$titleFull+" -Color Red
     foreach ($line in ($Lines | Select-Object -Last 10)) {
         if ($null -eq $line) { $line = '' }
         $padded = "  $line"
         if ($padded.Length -gt $innerWidth) { $padded = $padded.Substring(0, $innerWidth - 3) + '...' }
         $padded = $padded.PadRight($innerWidth)
-        Write-Colored "  │" -Color Red -NoNewline
+        Write-Colored "  |" -Color Red -NoNewline
         Write-Colored $padded -Color White -NoNewline
-        Write-Colored "│" -Color Red
+        Write-Colored "|" -Color Red
     }
-    Write-Colored "  └$bar┘" -Color Red
+    Write-Colored "  +$bar+" -Color Red
     Write-Host ""
 }
 
 function Show-ShutdownMessage {
     Write-Host ""
-    Write-Colored "  ◼  Server stopped. Thanks for playing." -Color DarkGray
+    Write-Colored "  --  Server stopped. Thanks for playing." -Color DarkGray
     Write-Host ""
 }
 
@@ -236,18 +236,18 @@ function Invoke-WithSpinner {
         Write-Colored "  ...  $Description" -Color Cyan
         try {
             & $Action
-            Write-Colored "  ✓  $Description" -Color Green
+            Write-Colored "  [+]  $Description" -Color Green
             return $true
         } catch {
-            if ($WarnOnFailure) { Write-Colored "  ⚠  $Description" -Color Yellow; return $false }
-            Write-Colored "  ✗  $Description" -Color Red
+            if ($WarnOnFailure) { Write-Colored "  [!]  $Description" -Color Yellow; return $false }
+            Write-Colored "  [X]  $Description" -Color Red
             throw
         }
     }
 
     # Reserve the spinner line — write a placeholder then record its row
-    $frames = [char[]]@([char]0x25D0,[char]0x25D3,[char]0x25D1,[char]0x25D2)
-    Write-Host "  $($frames[0])  $Description"
+    $frames = [char[]]@('|', '/', '-', '\')
+    Write-Host "  [$($frames[0])]  $Description"
     $row = $Host.UI.RawUI.CursorPosition.Y - 1
 
     # Shared state hashtable passed to the timer callback (thread-safe by value copy)
@@ -267,7 +267,7 @@ function Invoke-WithSpinner {
         if ($s.Done) { return }
         $f = $s.Frames[$s.Idx % 4]
         $s.Idx++
-        $msg = "  $f  $($s.Desc)          "
+        $msg = "  [$f]  $($s.Desc)       "
         try {
             [Console]::SetCursorPosition(0, $s.Row)
             if ($s.UseAnsi) { [Console]::Write("$($s.CyanCode)$msg$($s.ResetCode)") }
@@ -282,17 +282,17 @@ function Invoke-WithSpinner {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
-        Write-Colored "  ✓  $Description                              " -Color Green
+        Write-Colored "  [+]  $Description                          " -Color Green
         return $true
     } catch {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
         if ($WarnOnFailure) {
-            Write-Colored "  ⚠  $Description                              " -Color Yellow
+            Write-Colored "  [!]  $Description                          " -Color Yellow
             return $false
         }
-        Write-Colored "  ✗  $Description                              " -Color Red
+        Write-Colored "  [X]  $Description                          " -Color Red
         throw
     }
 }
@@ -387,7 +387,7 @@ function Test-PortAvailability {
 function Resolve-PortConflict {
     param([int]$ConflictPid, [string]$ProcessName)
     Write-Host ""
-    Write-Colored "  ⚠  Port 5000 in use by " -Color Yellow -NoNewline
+    Write-Colored "  [!]  Port 5000 in use by " -Color Yellow -NoNewline
     Write-Colored $ProcessName -Color White -NoNewline
     Write-Colored " (PID $ConflictPid)" -Color DarkGray
     Write-Colored "     Kill it and continue? " -Color Yellow -NoNewline
@@ -398,10 +398,10 @@ function Resolve-PortConflict {
         try {
             Stop-Process -Id $ConflictPid -Force -ErrorAction Stop
             Start-Sleep -Milliseconds 500
-            Write-Colored "  ✓  Process killed" -Color Green
+            Write-Colored "  [+]  Process killed" -Color Green
             return $true
         } catch {
-            Write-Colored "  ✗  Could not kill process: $_" -Color Red
+            Write-Colored "  [X]  Could not kill process: $_" -Color Red
             return $false
         }
     }
@@ -645,8 +645,8 @@ function Ensure-ApiKey {
     Write-Host ""
     $innerWidth = 50
     $bar        = '─' * $innerWidth
-    $titleFull  = '── First-time Setup '.PadRight($innerWidth, '─')
-    Write-Colored "  ┌$titleFull┐" -Color Yellow
+    $titleFull  = '-- First-time Setup '.PadRight($innerWidth, '-')
+    Write-Colored "  +$titleFull+" -Color Yellow
     $setupLines = @(
         ' ',
         '  NPC dialogue requires a free Groq API key.',
@@ -659,11 +659,11 @@ function Ensure-ApiKey {
     )
     foreach ($l in $setupLines) {
         $padded = $l.PadRight($innerWidth)
-        Write-Colored "  │" -Color Yellow -NoNewline
+        Write-Colored "  |" -Color Yellow -NoNewline
         Write-Colored $padded -Color White -NoNewline
-        Write-Colored "│" -Color Yellow
+        Write-Colored "|" -Color Yellow
     }
-    Write-Colored "  └$bar┘" -Color Yellow
+    Write-Colored "  +$bar+" -Color Yellow
     Write-Host ""
 
     # Open the browser automatically
@@ -676,12 +676,12 @@ function Ensure-ApiKey {
         $inputKey = $inputKey.Trim()
 
         if ($inputKey.Length -lt 20) {
-            Write-Colored "  ✗  That doesn't look right — the key should be much longer. Try again." -Color Red
+            Write-Colored "  [X]  That doesn't look right - the key should be much longer. Try again." -Color Red
             Write-Host ""
             continue
         }
         if (-not $inputKey.StartsWith('gsk_')) {
-            Write-Colored "  ⚠  Groq keys usually start with 'gsk_' — are you sure this is correct?" -Color Yellow
+            Write-Colored "  [!]  Groq keys usually start with 'gsk_' - are you sure this is correct?" -Color Yellow
             Write-Colored "     Press Enter to use it anyway, or type 'retry' to re-enter: " -Color DarkGray -NoNewline
             $confirm = Read-Host
             if ($confirm.Trim().ToLower() -eq 'retry') {
@@ -703,7 +703,7 @@ function Ensure-ApiKey {
     }
 
     Write-Host ""
-    Write-Colored "  ✓  API key saved to .env — you won't be asked again." -Color Green
+    Write-Colored "  [+]  API key saved to .env - you won't be asked again." -Color Green
     Write-Host ""
 }
 
@@ -728,7 +728,7 @@ try {
     try {
         $row = $Host.UI.RawUI.CursorPosition.Y - 1
         [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  ✓  Python $($script:PyVersion) detected                          " -Color Green
+        Write-Colored "  [+]  Python $($script:PyVersion) detected                       " -Color Green
     } catch { }
 
     # Step 2 — Venv
@@ -775,7 +775,7 @@ try {
         }
         $row = $Host.UI.RawUI.CursorPosition.Y - 1
         [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  ✓  Dependencies up to date $suffix                     " -Color Green
+        Write-Colored "  [+]  Dependencies up to date $suffix                  " -Color Green
     } catch { }
 
     # Step 4 — Git update (warn-only)
@@ -819,10 +819,10 @@ try {
     # Step 7 — Wait for ready
     $ready = Wait-ServerReady -TimeoutSeconds 10
     if ($ready) {
-        Write-Colored "  ✓  Server is responding                              " -Color Green
+        Write-Colored "  [+]  Server is responding                           " -Color Green
         Start-Process 'http://127.0.0.1:5000'
     } else {
-        Write-Colored "  ⚠  Server may be slow to start — opening browser anyway" -Color Yellow
+        Write-Colored "  [!]  Server may be slow to start - opening browser anyway" -Color Yellow
         Start-Process 'http://127.0.0.1:5000'
     }
 

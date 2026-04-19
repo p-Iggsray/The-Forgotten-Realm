@@ -90,9 +90,9 @@ function New-Box {
         [int]$InnerWidth      = 0
     )
     if ($Style -eq 'Double') {
-        $tl='╔'; $tr='╗'; $bl='╚'; $br='╝'; $h='═'; $v='║'
+        $tl='/'; $tr='\'; $bl='\'; $br='/'; $h='='; $v='|'
     } else {
-        $tl='┌'; $tr='┐'; $bl='└'; $br='┘'; $h='─'; $v='│'
+        $tl='+'; $tr='+'; $bl='+'; $br='+'; $h='-'; $v='|'
     }
     if ($InnerWidth -lt 1) {
         $maxLen = ($Lines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
@@ -129,17 +129,17 @@ function Invoke-WithSpinner {
         Write-Colored "  ...  $Description" -Color Cyan
         try {
             & $Action
-            Write-Colored "  ✓  $Description" -Color Green
+            Write-Colored "  [+]  $Description" -Color Green
             return $true
         } catch {
-            if ($WarnOnFailure) { Write-Colored "  ⚠  $Description" -Color Yellow; return $false }
-            Write-Colored "  ✗  $Description" -Color Red
+            if ($WarnOnFailure) { Write-Colored "  [!]  $Description" -Color Yellow; return $false }
+            Write-Colored "  [X]  $Description" -Color Red
             throw
         }
     }
 
-    $frames = [char[]]@([char]0x25D0,[char]0x25D3,[char]0x25D1,[char]0x25D2)
-    Write-Host "  $($frames[0])  $Description"
+    $frames = [char[]]@('|', '/', '-', '\')
+    Write-Host "  [$($frames[0])]  $Description"
     $row = $Host.UI.RawUI.CursorPosition.Y - 1
 
     $state = [hashtable]::Synchronized(@{
@@ -158,7 +158,7 @@ function Invoke-WithSpinner {
         if ($s.Done) { return }
         $f = $s.Frames[$s.Idx % 4]
         $s.Idx++
-        $msg = "  $f  $($s.Desc)          "
+        $msg = "  [$f]  $($s.Desc)       "
         try {
             [Console]::SetCursorPosition(0, $s.Row)
             if ($s.UseAnsi) { [Console]::Write("$($s.CyanCode)$msg$($s.ResetCode)") }
@@ -173,17 +173,17 @@ function Invoke-WithSpinner {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
-        Write-Colored "  ✓  $Description                              " -Color Green
+        Write-Colored "  [+]  $Description                          " -Color Green
         return $true
     } catch {
         $state.Done = $true
         $timer.Dispose()
         try { [Console]::SetCursorPosition(0, $row) } catch { }
         if ($WarnOnFailure) {
-            Write-Colored "  ⚠  $Description                              " -Color Yellow
+            Write-Colored "  [!]  $Description                          " -Color Yellow
             return $false
         }
-        Write-Colored "  ✗  $Description                              " -Color Red
+        Write-Colored "  [X]  $Description                          " -Color Red
         throw
     }
 }
@@ -193,35 +193,35 @@ function Show-TitleCard {
     Clear-Host
     $e          = $script:ESC
     $innerWidth = 50
-    $bar        = '═' * $innerWidth
+    $bar        = '=' * $innerWidth
     $blank      = ' ' * $innerWidth
 
-    Write-Colored "  ╔$bar╗" -Color Cyan
-    Write-Colored "  ║$blank║" -Color Cyan
+    Write-Colored "  /$bar\" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
 
-    $title   = '⚔  THE FORGOTTEN REALM  ⚔'
+    $title   = '>>>  THE FORGOTTEN REALM  <<<'
     $pad     = [Math]::Max(0, [int](($innerWidth - $title.Length) / 2))
     $titleLine = (' ' * $pad) + $title
     $titleLine = $titleLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[93m$e[1m$titleLine$e[0m")
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     } else {
         Write-Host $titleLine -ForegroundColor Yellow -NoNewline
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     }
 
     $sub     = 'Update Manager'
     $subPad  = [Math]::Max(0, [int](($innerWidth - $sub.Length) / 2))
     $subLine = (' ' * $subPad) + $sub
     $subLine = $subLine.PadRight($innerWidth)
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     Write-Colored $subLine -Color DarkCyan -NoNewline
-    Write-Colored "║" -Color Cyan
+    Write-Colored "|" -Color Cyan
 
-    Write-Colored "  ║$blank║" -Color Cyan
-    Write-Colored "  ╚$bar╝" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
+    Write-Colored "  \$bar/" -Color Cyan
     Write-Host ""
 }
 
@@ -229,20 +229,20 @@ function Show-TitleCard {
 function Show-ErrorBox {
     param([string]$Title, [string[]]$Lines)
     $innerWidth = 50
-    $bar        = '─' * $innerWidth
-    $titleFull  = "── $Title "
-    $titleFull  = $titleFull.PadRight($innerWidth, '─')
-    Write-Colored "  ┌$titleFull┐" -Color Red
+    $bar        = '-' * $innerWidth
+    $titleFull  = "-- $Title "
+    $titleFull  = $titleFull.PadRight($innerWidth, '-')
+    Write-Colored "  +$titleFull+" -Color Red
     foreach ($line in ($Lines | Select-Object -Last 10)) {
         if ($null -eq $line) { $line = '' }
         $padded = "  $line"
         if ($padded.Length -gt $innerWidth) { $padded = $padded.Substring(0, $innerWidth - 3) + '...' }
         $padded = $padded.PadRight($innerWidth)
-        Write-Colored "  │" -Color Red -NoNewline
+        Write-Colored "  |" -Color Red -NoNewline
         Write-Colored $padded -Color White -NoNewline
-        Write-Colored "│" -Color Red
+        Write-Colored "|" -Color Red
     }
-    Write-Colored "  └$bar┘" -Color Red
+    Write-Colored "  +$bar+" -Color Red
     Write-Host ""
 }
 
@@ -308,23 +308,23 @@ function Show-RollbackMenu {
     $bar        = '═' * $innerWidth
     $blank      = ' ' * $innerWidth
     $e          = $script:ESC
-    Write-Colored "  ╔$bar╗" -Color Green
-    Write-Colored "  ║$blank║" -Color Green
-    $l1 = "   ✓  Rolled back to: $selectedTag"
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  /$bar\" -Color Green
+    Write-Colored "  |$blank|" -Color Green
+    $l1 = "   [+]  Rolled back to: $selectedTag"
+    Write-Colored "  |" -Color Green -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[92m$e[1m$($l1.PadRight($innerWidth))$e[0m")
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     } else {
         Write-Host $l1.PadRight($innerWidth) -ForegroundColor Green -NoNewline
-        Write-Colored "║" -Color Green
+        Write-Colored "|" -Color Green
     }
     $l2 = "   Run launch.bat to play this version"
-    Write-Colored "  ║" -Color Green -NoNewline
+    Write-Colored "  |" -Color Green -NoNewline
     Write-Colored $l2.PadRight($innerWidth) -Color DarkGray -NoNewline
-    Write-Colored "║" -Color Green
-    Write-Colored "  ║$blank║" -Color Green
-    Write-Colored "  ╚$bar╝" -Color Green
+    Write-Colored "|" -Color Green
+    Write-Colored "  |$blank|" -Color Green
+    Write-Colored "  \$bar/" -Color Green
     Write-Host ""
 }
 
@@ -350,7 +350,7 @@ try {
     try {
         $row = $Host.UI.RawUI.CursorPosition.Y - 1
         [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  ✓  Git $($script:GitVersion) detected                                    " -Color Green
+        Write-Colored "  [+]  Git $($script:GitVersion) detected                                 " -Color Green
     } catch { }
 
     # ── Step 2 — Repo check ───────────────────────────────────────────────────
@@ -372,7 +372,7 @@ try {
     $statusLines = @(& git status --porcelain 2>&1 | Where-Object { $_ -match '\S' })
 
     if ($statusLines.Count -gt 0) {
-        Write-Colored "  ⚠  You have local changes that would be overwritten." -Color Yellow
+        Write-Colored "  [!]  You have local changes that would be overwritten." -Color Yellow
         Write-Host ""
 
         $displayLines = if ($statusLines.Count -gt 8) { $statusLines[0..7] } else { $statusLines }
@@ -411,7 +411,7 @@ try {
             }
             'C' {
                 Write-Host ""
-                Write-Colored "  ◼  Update cancelled." -Color DarkGray
+                Write-Colored "  --  Update cancelled." -Color DarkGray
                 Write-Host ""
                 exit 0
             }
@@ -420,7 +420,7 @@ try {
             }
         }
     } else {
-        Write-Colored "  ✓  Working directory clean                              " -Color Green
+        Write-Colored "  [+]  Working directory clean                          " -Color Green
     }
 
     Write-Host ""
@@ -436,7 +436,7 @@ try {
     try {
         $row = $Host.UI.RawUI.CursorPosition.Y - 1
         [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  ✓  Backup created: $($script:BackupTag)                       " -Color Green
+        Write-Colored "  [+]  Backup created: $($script:BackupTag)                    " -Color Green
     } catch { }
     Write-Colored "     Rollback anytime with: git checkout $($script:BackupTag)" -Color DarkGray
 
@@ -457,26 +457,26 @@ try {
         $ver = (& git describe --tags --always 2>&1).Trim()
         Write-Host ""
         $innerWidth = 50
-        $bar        = '═' * $innerWidth
+        $bar        = '=' * $innerWidth
         $blank      = ' ' * $innerWidth
         $e          = $script:ESC
-        Write-Colored "  ╔$bar╗" -Color Green
-        Write-Colored "  ║$blank║" -Color Green
-        $l1 = "   ✓  You're already on the latest version!"
-        Write-Colored "  ║" -Color Green -NoNewline
+        Write-Colored "  /$bar\" -Color Green
+        Write-Colored "  |$blank|" -Color Green
+        $l1 = "   [+]  You're already on the latest version!"
+        Write-Colored "  |" -Color Green -NoNewline
         if ($script:UseAnsi) {
             [Console]::Write("$e[92m$e[1m$($l1.PadRight($innerWidth))$e[0m")
-            Write-Colored "║" -Color Green
+            Write-Colored "|" -Color Green
         } else {
             Write-Host $l1.PadRight($innerWidth) -ForegroundColor Green -NoNewline
-            Write-Colored "║" -Color Green
+            Write-Colored "|" -Color Green
         }
         $l2 = "   Version: $ver"
-        Write-Colored "  ║" -Color Green -NoNewline
+        Write-Colored "  |" -Color Green -NoNewline
         Write-Colored $l2.PadRight($innerWidth) -Color DarkCyan -NoNewline
-        Write-Colored "║" -Color Green
-        Write-Colored "  ║$blank║" -Color Green
-        Write-Colored "  ╚$bar╝" -Color Green
+        Write-Colored "|" -Color Green
+        Write-Colored "  |$blank|" -Color Green
+        Write-Colored "  \$bar/" -Color Green
         Write-Host ""
         exit 0
     }
@@ -485,12 +485,12 @@ try {
     $commitCountStr = (& git rev-list HEAD..origin/$branch --count 2>&1).Trim()
     $commitCount    = 0
     [int]::TryParse($commitCountStr, [ref]$commitCount) | Out-Null
-    $commitMsgs = @(& git log HEAD..origin/$branch --oneline --pretty=format:'• %s' 2>&1 |
+    $commitMsgs = @(& git log HEAD..origin/$branch --oneline --pretty=format:'* %s' 2>&1 |
                     Select-Object -First 5)
 
     Write-Host ""
     $plural = if ($commitCount -ne 1) { 's' } else { '' }
-    Write-Colored "  ◼  $commitCount update$plural available:" -Color Yellow
+    Write-Colored "  [*]  $commitCount update$plural available:" -Color Yellow
     foreach ($msg in $commitMsgs) {
         Write-Colored "     $msg" -Color DarkGray
     }
@@ -533,7 +533,7 @@ try {
                 if (Test-Path $cachePath) { Remove-Item $cachePath -Force -ErrorAction SilentlyContinue }
             } | Out-Null
         } else {
-            Write-Colored "  ✓  Dependencies unchanged — skipping install               " -Color Green
+            Write-Colored "  [+]  Dependencies unchanged - skipping install            " -Color Green
         }
     }
 
@@ -550,9 +550,9 @@ try {
         if ($conflicts.Count -gt 0) {
             Write-Host ""
             $innerWidth = 50
-            $bar        = '─' * $innerWidth
-            $titleFull  = '── Merge Conflict '.PadRight($innerWidth, '─')
-            Write-Colored "  ┌$titleFull┐" -Color Yellow
+            $bar        = '-' * $innerWidth
+            $titleFull  = '-- Merge Conflict '.PadRight($innerWidth, '-')
+            Write-Colored "  +$titleFull+" -Color Yellow
             $warnLines = @(
                 '  Your local changes conflict with the update.',
                 "  Your changes are in the stash: $($script:StashRef)",
@@ -560,11 +560,11 @@ try {
             )
             foreach ($wl in $warnLines) {
                 $padded = $wl.PadRight($innerWidth)
-                Write-Colored "  │" -Color Yellow -NoNewline
+                Write-Colored "  |" -Color Yellow -NoNewline
                 Write-Colored $padded -Color White -NoNewline
-                Write-Colored "│" -Color Yellow
+                Write-Colored "|" -Color Yellow
             }
-            Write-Colored "  └$bar┘" -Color Yellow
+            Write-Colored "  +$bar+" -Color Yellow
             Write-Host ""
         }
     }
@@ -579,51 +579,51 @@ try {
 
     Write-Host ""
     $innerWidth = 50
-    $bar        = '═' * $innerWidth
+    $bar        = '=' * $innerWidth
     $blank      = ' ' * $innerWidth
     $e          = $script:ESC
 
-    Write-Colored "  ╔$bar╗" -Color Cyan
-    Write-Colored "  ║$blank║" -Color Cyan
+    Write-Colored "  /$bar\" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
 
-    $doneTitle = '   ✓  Update complete!'
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    $doneTitle = '   [+]  Update complete!'
+    Write-Colored "  |" -Color Cyan -NoNewline
     if ($script:UseAnsi) {
         [Console]::Write("$e[92m$e[1m$($doneTitle.PadRight($innerWidth))$e[0m")
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     } else {
         Write-Host $doneTitle.PadRight($innerWidth) -ForegroundColor Green -NoNewline
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     }
 
-    Write-Colored "  ║$blank║" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
 
-    $vLine = "   Version:   $($script:OldHash) → $($script:NewHash)"
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    $vLine = "   Version:   $($script:OldHash) -> $($script:NewHash)"
+    Write-Colored "  |" -Color Cyan -NoNewline
     Write-Colored $vLine.PadRight($innerWidth) -Color White -NoNewline
-    Write-Colored "║" -Color Cyan
+    Write-Colored "|" -Color Cyan
 
     if ($filesChanged) {
         $fLine = "   Updated:   $filesChanged"
-        Write-Colored "  ║" -Color Cyan -NoNewline
+        Write-Colored "  |" -Color Cyan -NoNewline
         Write-Colored $fLine.PadRight($innerWidth) -Color White -NoNewline
-        Write-Colored "║" -Color Cyan
+        Write-Colored "|" -Color Cyan
     }
 
     $bLine = "   Backup:    $($script:BackupTag)"
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     Write-Colored $bLine.PadRight($innerWidth) -Color DarkCyan -NoNewline
-    Write-Colored "║" -Color Cyan
+    Write-Colored "|" -Color Cyan
 
-    Write-Colored "  ║$blank║" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
 
     $playLine = '   Run launch.bat to play'
-    Write-Colored "  ║" -Color Cyan -NoNewline
+    Write-Colored "  |" -Color Cyan -NoNewline
     Write-Colored $playLine.PadRight($innerWidth) -Color DarkGray -NoNewline
-    Write-Colored "║" -Color Cyan
+    Write-Colored "|" -Color Cyan
 
-    Write-Colored "  ║$blank║" -Color Cyan
-    Write-Colored "  ╚$bar╝" -Color Cyan
+    Write-Colored "  |$blank|" -Color Cyan
+    Write-Colored "  \$bar/" -Color Cyan
     Write-Host ""
 
 } catch {
