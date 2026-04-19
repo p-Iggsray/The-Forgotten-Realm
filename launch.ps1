@@ -31,9 +31,9 @@ function Initialize-Ansi {
 [DllImport("kernel32.dll")] public static extern IntPtr GetStdHandle(int n);
 '@ -Name K32 -Namespace Win32VT -PassThru -ErrorAction Stop
             $handle = $k32::GetStdHandle(-11)
-            $mode   = 0u
+            $mode   = [uint32]0
             $k32::GetConsoleMode($handle, [ref]$mode) | Out-Null
-            $k32::SetConsoleMode($handle, ($mode -bor 0x0004u)) | Out-Null
+            $k32::SetConsoleMode($handle, ($mode -bor [uint32]0x0004)) | Out-Null
             $isModern = $true
         } catch { }
     }
