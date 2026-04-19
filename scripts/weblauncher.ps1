@@ -2,8 +2,50 @@
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+trap {
+    $msg   = "ERROR: $($_.Exception.Message)"
+    $trace = $_.ScriptStackTrace
+    try { Write-Host "`n$msg" -ForegroundColor Red } catch {}
+    try { Write-Host $trace  -ForegroundColor DarkGray } catch {}
+    try {
+        $logPath = "$env:TEMP\tfr-weblauncher-error.txt"
+        "$msg`n`n$trace" | Out-File $logPath -Force
+        Write-Host "`nFull error saved to: $logPath" -ForegroundColor DarkGray
+    } catch {}
+    try { Read-Host "`nPress Enter to close" } catch {}
+    exit 1
+}
+
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding           = [System.Text.Encoding]::UTF8
+
+if (-not ([System.Management.Automation.PSTypeName]'SpinnerTimer').Type) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Collections;
+using System.Threading;
+
+public static class SpinnerTimer {
+    private static readonly char[] Frames = { '|', '/', '-', '\\' };
+
+    public static TimerCallback GetCallback() { return Tick; }
+
+    private static void Tick(object state) {
+        Hashtable s = (Hashtable)state;
+        if ((bool)s["Done"]) return;
+        int idx;
+        lock (s.SyncRoot) { idx = (int)s["Idx"]; s["Idx"] = idx + 1; }
+        string msg = String.Format("  [{0}]  {1}       ", Frames[idx % 4], (string)s["Desc"]);
+        try {
+            Console.SetCursorPosition(0, (int)s["Row"]);
+            string c = (string)s["Cyan"], r = (string)s["Reset"];
+            if (c.Length > 0) Console.Write(c + msg + r);
+            else              Console.Write(msg);
+        } catch { }
+    }
+}
+'@
+}
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 Set-Location $RepoRoot
 
@@ -110,28 +152,15 @@ function Invoke-WithSpinner {
     $row = $Host.UI.RawUI.CursorPosition.Y - 1
 
     $state = [hashtable]::Synchronized(@{
-        Row       = $row
-        Idx       = 0
-        Desc      = $Description
-        Done      = $false
-        UseAnsi   = $script:UseAnsi
-        GreenCode = if ($script:UseAnsi) { $script:AnsiColors['Green'] } else { '' }
-        ResetCode = if ($script:UseAnsi) { $script:AnsiColors['Reset'] } else { '' }
-        Frames    = $frames
+        Row   = $row
+        Idx   = 0
+        Desc  = $Description
+        Done  = $false
+        Cyan  = if ($script:UseAnsi) { $script:AnsiColors['Green'] } else { '' }
+        Reset = if ($script:UseAnsi) { $script:AnsiColors['Reset'] } else { '' }
     })
 
-    $timerCallback = [System.Threading.TimerCallback]{
-        param($s)
-        if ($s.Done) { return }
-        $f = $s.Frames[$s.Idx % 4]
-        $s.Idx++
-        $msg = "  [$f]  $($s.Desc)       "
-        try {
-            [Console]::SetCursorPosition(0, $s.Row)
-            if ($s.UseAnsi) { [Console]::Write("$($s.GreenCode)$msg$($s.ResetCode)") }
-            else             { [Console]::Write($msg) }
-        } catch { }
-    }
+    $timerCallback = [SpinnerTimer]::GetCallback()
 
     $timer = New-Object System.Threading.Timer($timerCallback, $state, 0, 100)
 
@@ -337,9 +366,17 @@ function New-OrbIcon {
 # ─── Web shortcut — named distinctly from the local shortcut ─────────────────
 function Initialize-WebShortcut {
     $desktop = [System.Environment]::GetFolderPath('Desktop')
-    $lnkPath = Join-Path $desktop 'The Forgotten Realm — Online.lnk'
-    $icoPath = Join-Path $PSScriptRoot 'web-icon.ico'
+    $lnkPath = Join-Path $desktop 'The Forgotten Realm - Online.lnk'
     if (Test-Path $lnkPath) { return }
+    $icoPath = Join-Path $PSScriptRoot 'web-icon.ico'
+    Write-Host ""
+    Write-Colored "  Add a desktop shortcut for The Forgotten Realm (Online)? " -Color Yellow -NoNewline
+    Write-Colored "[Y/N] " -Color White -NoNewline
+    try {
+        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        Write-Host ""
+        if ($key.Character -notmatch '^[Yy]$') { return }
+    } catch { return }
     try {
         if (-not (Test-Path $icoPath)) { New-OrbIcon -Path $icoPath }
         $shell = New-Object -ComObject WScript.Shell
@@ -349,7 +386,9 @@ function Initialize-WebShortcut {
         $sc.IconLocation     = "$icoPath,0"
         $sc.Description      = 'The Forgotten Realm - Play Online'
         $sc.Save()
+        Write-Colored "  [+]  Shortcut added to desktop" -Color Green
     } catch { }
+    Write-Host ""
 }
 
 # ─── Main ─────────────────────────────────────────────────────────────────────

@@ -636,18 +636,28 @@ function New-SwordIcon {
 function Initialize-Shortcut {
     $desktop = [System.Environment]::GetFolderPath('Desktop')
     $lnkPath = Join-Path $desktop 'The Forgotten Realm.lnk'
-    $icoPath = Join-Path $PSScriptRoot 'game-icon.ico'
     if (Test-Path $lnkPath) { return }
+    $icoPath = Join-Path $PSScriptRoot 'game-icon.ico'
+    Write-Host ""
+    Write-Colored "  Add a desktop shortcut for The Forgotten Realm? " -Color Yellow -NoNewline
+    Write-Colored "[Y/N] " -Color White -NoNewline
+    try {
+        $key = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
+        Write-Host ""
+        if ($key.Character -notmatch '^[Yy]$') { return }
+    } catch { return }
     try {
         if (-not (Test-Path $icoPath)) { New-SwordIcon -Path $icoPath }
         $shell = New-Object -ComObject WScript.Shell
         $sc = $shell.CreateShortcut($lnkPath)
-        $sc.TargetPath      = Join-Path $PSScriptRoot 'launch.bat'
+        $sc.TargetPath       = Join-Path $PSScriptRoot 'launch.bat'
         $sc.WorkingDirectory = $RepoRoot
-        $sc.IconLocation    = "$icoPath,0"
-        $sc.Description     = 'The Forgotten Realm - Eldoria Village'
+        $sc.IconLocation     = "$icoPath,0"
+        $sc.Description      = 'The Forgotten Realm - Eldoria Village'
         $sc.Save()
+        Write-Colored "  [+]  Shortcut added to desktop" -Color Green
     } catch { }
+    Write-Host ""
 }
 
 # ─── API key first-run setup ──────────────────────────────────────────────────
