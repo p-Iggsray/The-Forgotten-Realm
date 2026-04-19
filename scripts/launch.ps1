@@ -338,17 +338,10 @@ function Install-Dependencies {
         }
     }
 
-    $script:TempErrFile = [System.IO.Path]::GetTempFileName()
-    $proc = Start-Process -FilePath $script:VenvPython `
-        -ArgumentList "-m pip install -r `"$reqPath`" -q --disable-pip-version-check" `
-        -NoNewWindow -Wait -PassThru `
-        -RedirectStandardError $script:TempErrFile `
-        -WorkingDirectory $RepoRoot
-
-    if ($proc.ExitCode -ne 0) {
-        $script:PipStderr = Get-Content $script:TempErrFile -ErrorAction SilentlyContinue |
-                            Select-Object -Last 10
-        throw "pip install failed (exit $($proc.ExitCode))"
+    $pipOutput = & $script:VenvPython -m pip install -r $reqPath -q --disable-pip-version-check 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $script:PipStderr = ($pipOutput | Select-Object -Last 10 | ForEach-Object { "$_" })
+        throw "pip install failed (exit $LASTEXITCODE)"
     }
     [System.IO.File]::WriteAllText($cachePath, (Get-Date -Format 'o'))
     $script:DepsStatus = 'installed'
@@ -725,12 +718,6 @@ try {
         $script:PyVersion = $ver
         $script:PythonExe = 'python'
     } | Out-Null
-    # Rewrite the success line to include version
-    try {
-        $row = $Host.UI.RawUI.CursorPosition.Y - 1
-        [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  [+]  Python $($script:PyVersion) detected                       " -Color Green
-    } catch { }
 
     # Step 2 — Venv
     Invoke-WithSpinner -Description "Virtual environment" -Action {
@@ -754,36 +741,22 @@ try {
             $cacheM = (Get-Item $cachePath).LastWriteTimeUtc
             if ($cacheM -ge $reqM) { $script:DepsStatus = 'cached'; return }
         }
-        $tmpErr = [System.IO.Path]::GetTempFileName()
-        $script:TempErrFile = $tmpErr
-        $proc = Start-Process -FilePath $script:VenvPython `
-            -ArgumentList "-m pip install -r `"$reqPath`" -q --disable-pip-version-check" `
-            -NoNewWindow -Wait -PassThru -RedirectStandardError $tmpErr `
-            -WorkingDirectory $RepoRoot
-        if ($proc.ExitCode -ne 0) {
-            $script:PipStderr = Get-Content $tmpErr -ErrorAction SilentlyContinue | Select-Object -Last 10
-            throw "pip install failed (exit $($proc.ExitCode))"
+        $pipOutput = & $script:VenvPython -m pip install -r $reqPath -q --disable-pip-version-check 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $script:PipStderr = ($pipOutput | Select-Object -Last 10 | ForEach-Object { "$_" })
+            throw "pip install failed (exit $LASTEXITCODE)"
         }
         [System.IO.File]::WriteAllText($cachePath, (Get-Date -Format 'o'))
         $script:DepsStatus = 'installed'
     } | Out-Null
-    try {
-        $suffix = switch ($script:DepsStatus) {
-            'cached'            { "(cached)" }
-            'installed'         { "(installed)" }
-            'no requirements.txt' { "(skipped)" }
-            default             { "" }
-        }
-        $row = $Host.UI.RawUI.CursorPosition.Y - 1
-        [Console]::SetCursorPosition(0, $row)
-        Write-Colored "  [+]  Dependencies up to date $suffix                  " -Color Green
-    } catch { }
 
-    # Step 4 — Git update (warn-only)
+    # Step 4 — Git update (warn-only; skipped when local changes are present)
     Invoke-WithSpinner -Description "Checking for updates" -WarnOnFailure -Action {
         $git = Get-Command git -ErrorAction SilentlyContinue
         if ($null -eq $git) { return }
-        $result = & git pull --ff-only 2>&1
+        $dirty = & git status --porcelain 2>&1
+        if ($dirty) { return }   # local changes — skip pull silently
+        & git pull --ff-only 2>&1 | Out-Null
         if ($LASTEXITCODE -ne 0) { throw "Git pull failed (offline or conflict)" }
     } | Out-Null
 
