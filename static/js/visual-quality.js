@@ -1,4 +1,7 @@
 'use strict';
+if (!window.Game || !window.Game.TILE)
+    throw new Error('visual-quality.js loaded before Game namespace initialized');
+
 // ═══════════════════════════════════════════════════════════════════
 //  visual-quality.js  ─  The Forgotten Realm
 //
@@ -16,8 +19,9 @@
 //
 //  3. Grass sway          3-step wind animation on grass tiles within
 //                         a player-radius. Sway frames pre-rendered
-//                         from the existing _tc cache; only frames 1-2
-//                         draw (frame 0 = static baked tile, no overdraw).
+//                         from spriteRenderer._getCachedVariant();
+//                         only frames 1-2 draw (frame 0 = static baked
+//                         tile, no overdraw).
 //
 //  4. Post-processing     (a) Warm amber screen overlay — pushes all
 //                             midtones toward a late-afternoon RPG tone.
@@ -33,8 +37,13 @@
 //                          VQ.renderOutdoorTorchGlow()
 //    resizeCanvas()      → VQ.invalidate()
 //
-//  Depends on game.js globals: PALETTE, TILE, TS, cW, cH, cam,
-//    timeMs, currentMap, ctx, bgCtx, _tc, dither2, player
+//  Depends on Game.* namespace: Game.PALETTE, Game.TILE, Game.TS,
+//    Game.cW, Game.cH, Game.cam, Game.timeMs, Game.currentMap,
+//    Game.ctx, Game.player
+//  Render API: Render.dither2
+//  Global instances: spriteRenderer (SpriteRenderer.js),
+//                    tileRenderer (tile-renderer.js)
+//  bgCtx is received as a parameter to bakeAO() — not read ambient.
 // ═══════════════════════════════════════════════════════════════════
 
 const VQ = (() => {
@@ -75,9 +84,9 @@ const VQ = (() => {
     // ─── cached torch disc for outdoor glow ─────────────────────────
     let _vqTorchDisc = null, _vqDiscTS = 0;
     function _ensureVqDisc() {
-        if (_vqDiscTS === TS) return;
-        _vqDiscTS = TS;
-        const rad = Math.ceil(TS * C.torchRadius);
+        if (_vqDiscTS === Game.TS) return;
+        _vqDiscTS = Game.TS;
+        const rad = Math.ceil(Game.TS * C.torchRadius);
         const d = rad * 2;
         _vqTorchDisc = document.createElement('canvas');
         _vqTorchDisc.width = _vqTorchDisc.height = d;
@@ -95,10 +104,10 @@ const VQ = (() => {
     let _AO_CAST, _AO_RECV;
     function _sets() {
         if (_AO_CAST) return;
-        _AO_CAST = new Set([TILE.BUILDING_WALL, TILE.TREE]);
+        _AO_CAST = new Set([Game.TILE.BUILDING_WALL, Game.TILE.TREE]);
         _AO_RECV = new Set([
-            TILE.BUILDING_FLOOR, TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.WATER,
-            TILE.DOOR, TILE.SIGN, TILE.STAIRS, TILE.STAIRSUP,
+            Game.TILE.BUILDING_FLOOR, Game.TILE.GRASS, Game.TILE.DIRT_PATH, Game.TILE.STONE_PATH, Game.TILE.WATER,
+            Game.TILE.DOOR, Game.TILE.SIGN, Game.TILE.STAIRS, Game.TILE.STAIRSUP,
         ]);
     }
 
@@ -158,24 +167,24 @@ const VQ = (() => {
     // Callers that do not use a buffered canvas pass no arguments (defaults to 0).
     function bakeAO(bgc, stx, sty, etx, ety, bakeOffX = 0, bakeOffY = 0) {
         _sets();
-        _ensureAOStrips(TS);
-        const P  = PALETTE;
-        const T  = TS;
+        _ensureAOStrips(Game.TS);
+        const P  = Game.PALETTE;
+        const T  = Game.TS;
         const bw = Math.max(4, Math.floor(T * C.blendW));
 
         for (let ty = sty; ty <= ety; ty++) {
             for (let tx = stx; tx <= etx; tx++) {
-                const tile = currentMap.tiles[ty]?.[tx];
+                const tile = Game.currentMap.tiles[ty]?.[tx];
                 if (tile === undefined) continue;
 
-                const px = Math.floor(tx * T - cam.x) + bakeOffX;
-                const py = Math.floor(ty * T - cam.y) + bakeOffY;
+                const px = Math.floor(tx * T - Game.cam.x) + bakeOffX;
+                const py = Math.floor(ty * T - Game.cam.y) + bakeOffY;
 
                 // ── Ambient occlusion ─────────────────────────────────
                 if (_AO_RECV.has(tile)) {
-                    const tN  = currentMap.tiles[ty - 1]?.[tx];
-                    const tW  = currentMap.tiles[ty]?.[tx - 1];
-                    const tNW = currentMap.tiles[ty - 1]?.[tx - 1];
+                    const tN  = Game.currentMap.tiles[ty - 1]?.[tx];
+                    const tW  = Game.currentMap.tiles[ty]?.[tx - 1];
+                    const tNW = Game.currentMap.tiles[ty - 1]?.[tx - 1];
 
                     // North wall/tree → shadow falling south (blit pre-rendered strip)
                     if (_AO_CAST.has(tN)) bgc.drawImage(_aoNStrip, px, py);
@@ -192,7 +201,7 @@ const VQ = (() => {
                 // The existing code already blends FROM the GRASS side.
                 // Here we add the matching blend from PATH facing GRASS/TREE,
                 // plus diagonal corner fills to remove bare notch artifacts.
-                if (tile === TILE.DIRT_PATH || tile === TILE.STONE_PATH) {
+                if (tile === Game.TILE.DIRT_PATH || tile === Game.TILE.STONE_PATH) {
                     const dirs = [
                         [tx, ty - 1, 0],  // N edge of this tile
                         [tx, ty + 1, 1],  // S edge
@@ -200,12 +209,12 @@ const VQ = (() => {
                         [tx + 1, ty, 3],  // E edge
                     ];
                     for (const [ntx, nty, dir] of dirs) {
-                        const nt = currentMap.tiles[nty]?.[ntx];
-                        if (nt !== TILE.GRASS && nt !== TILE.TREE) continue;
-                        if (dir === 0) dither2(bgc, px, py,          T,  bw, P.M_SAND, P.M_FOREST, 1);
-                        if (dir === 1) dither2(bgc, px, py + T - bw, T,  bw, P.M_SAND, P.M_FOREST, 0);
-                        if (dir === 2) dither2(bgc, px, py,          bw, T,  P.M_SAND, P.M_FOREST, 1);
-                        if (dir === 3) dither2(bgc, px + T - bw, py, bw, T,  P.M_SAND, P.M_FOREST, 0);
+                        const nt = Game.currentMap.tiles[nty]?.[ntx];
+                        if (nt !== Game.TILE.GRASS && nt !== Game.TILE.TREE) continue;
+                        if (dir === 0) Render.dither2(bgc, px, py,          T,  bw, P.M_SAND, P.M_FOREST, 1);
+                        if (dir === 1) Render.dither2(bgc, px, py + T - bw, T,  bw, P.M_SAND, P.M_FOREST, 0);
+                        if (dir === 2) Render.dither2(bgc, px, py,          bw, T,  P.M_SAND, P.M_FOREST, 1);
+                        if (dir === 3) Render.dither2(bgc, px + T - bw, py, bw, T,  P.M_SAND, P.M_FOREST, 0);
                     }
                     // Diagonal corner fills — prevent hard-cut notches at convex corners
                     // where two cardinal blend strips would leave a bare pixel gap.
@@ -216,31 +225,31 @@ const VQ = (() => {
                         [tx-1,ty-1, tx,  ty-1, tx-1,ty,   0,    0    ], // NW
                     ];
                     for (const [dnx,dny,a1x,a1y,a2x,a2y,cpx,cpy] of pathDiags) {
-                        const dt  = currentMap.tiles[dny]?.[dnx];
-                        if (dt !== TILE.GRASS && dt !== TILE.TREE) continue;
-                        const a1t = currentMap.tiles[a1y]?.[a1x];
-                        const a2t = currentMap.tiles[a2y]?.[a2x];
+                        const dt  = Game.currentMap.tiles[dny]?.[dnx];
+                        if (dt !== Game.TILE.GRASS && dt !== Game.TILE.TREE) continue;
+                        const a1t = Game.currentMap.tiles[a1y]?.[a1x];
+                        const a2t = Game.currentMap.tiles[a2y]?.[a2x];
                         // Only fill if neither adjacent cardinal is already blended
-                        if ((a1t===TILE.GRASS||a1t===TILE.TREE)||(a2t===TILE.GRASS||a2t===TILE.TREE)) continue;
-                        dither2(bgc, px+cpx, py+cpy, bw, bw, P.M_SAND, P.M_FOREST, 1);
+                        if ((a1t===Game.TILE.GRASS||a1t===Game.TILE.TREE)||(a2t===Game.TILE.GRASS||a2t===Game.TILE.TREE)) continue;
+                        Render.dither2(bgc, px+cpx, py+cpy, bw, bw, P.M_SAND, P.M_FOREST, 1);
                     }
                 }
 
                 // ── Autotile blending — WATER side ────────────────────
                 // Water already has live lily pads. Edge blending is new.
-                if (tile === TILE.WATER) {
+                if (tile === Game.TILE.WATER) {
                     const dirs = [
                         [tx, ty - 1, 0], [tx, ty + 1, 1],
                         [tx - 1, ty, 2], [tx + 1, ty, 3],
                     ];
                     for (const [ntx, nty, dir] of dirs) {
-                        const nt = currentMap.tiles[nty]?.[ntx];
-                        if (nt !== TILE.GRASS && nt !== TILE.TREE && nt !== TILE.DIRT_PATH && nt !== TILE.STONE_PATH) continue;
-                        const edgeCol = (nt === TILE.DIRT_PATH || nt === TILE.STONE_PATH) ? P.M_CLAY : P.M_FOREST;
-                        if (dir === 0) dither2(bgc, px, py,          T,  bw, P.M_TEAL, edgeCol, 1);
-                        if (dir === 1) dither2(bgc, px, py + T - bw, T,  bw, P.M_TEAL, edgeCol, 0);
-                        if (dir === 2) dither2(bgc, px, py,          bw, T,  P.M_TEAL, edgeCol, 1);
-                        if (dir === 3) dither2(bgc, px + T - bw, py, bw, T,  P.M_TEAL, edgeCol, 0);
+                        const nt = Game.currentMap.tiles[nty]?.[ntx];
+                        if (nt !== Game.TILE.GRASS && nt !== Game.TILE.TREE && nt !== Game.TILE.DIRT_PATH && nt !== Game.TILE.STONE_PATH) continue;
+                        const edgeCol = (nt === Game.TILE.DIRT_PATH || nt === Game.TILE.STONE_PATH) ? P.M_CLAY : P.M_FOREST;
+                        if (dir === 0) Render.dither2(bgc, px, py,          T,  bw, P.M_TEAL, edgeCol, 1);
+                        if (dir === 1) Render.dither2(bgc, px, py + T - bw, T,  bw, P.M_TEAL, edgeCol, 0);
+                        if (dir === 2) Render.dither2(bgc, px, py,          bw, T,  P.M_TEAL, edgeCol, 1);
+                        if (dir === 3) Render.dither2(bgc, px + T - bw, py, bw, T,  P.M_TEAL, edgeCol, 0);
                     }
                 }
             }
@@ -250,8 +259,9 @@ const VQ = (() => {
     // ═══════════════════════════════════════════════════════════════
     //  3 — GRASS SWAY ANIMATION
     //  Pre-renders 3 sway variants per grass type from the existing
-    //  _tc cache. Only frames 1 and 2 are ever blitted — frame 0 is
-    //  identical to the baked bgCanvas, so it contributes nothing.
+    //  spriteRenderer cache. Only frames 1 and 2 are ever blitted —
+    //  frame 0 is identical to the baked bgCanvas, so it contributes
+    //  nothing.
     //
     //  Wind effect: a narrow shadow strip on the upstream side and
     //  a narrow bright strip on the downstream side of the top 52%
@@ -270,7 +280,7 @@ const VQ = (() => {
     let _cgGrd = null, _cgGrdW = 0, _cgGrdH = 0, _cgGrdKey = '';
 
     function _buildSway(ts) {
-        const P   = PALETTE;
+        const P   = Game.PALETTE;
         const sw  = Math.max(3, Math.floor(ts * 0.08));  // strip width
         const sh  = Math.floor(ts * 0.52);               // strip height (top portion)
 
@@ -341,7 +351,7 @@ const VQ = (() => {
 
     // Advance sway frame. Called once per drawSwayPass() invocation.
     function _advanceSway() {
-        const now   = timeMs;
+        const now   = Game.timeMs;
         const delta = Math.min(now - _swayLast, 200); // cap at 200ms (tab wake)
         _swayLast   = now;
         _swayTimer += delta;
@@ -355,13 +365,13 @@ const VQ = (() => {
     // Draw the sway overlay for grass tiles within swayRadius of the player.
     // Called at the end of drawAnimatedTiles() each frame.
     function drawSwayPass() {
-        if (!currentMap || currentMap.dark) return;
+        if (!Game.currentMap || Game.currentMap.dark) return;
 
         // Rebuild if TS changed, first run, or atlas became ready after last bake.
         // _buildSway() returns early (null frames) when atlas is not yet ready.
         const atlasNowReady = (typeof spriteRenderer !== 'undefined') && spriteRenderer.isReady();
-        if (!_swayFrames || _swayTS !== TS || (!_swayBuiltWithAtlas && atlasNowReady)) {
-            _buildSway(TS);
+        if (!_swayFrames || _swayTS !== Game.TS || (!_swayBuiltWithAtlas && atlasNowReady)) {
+            _buildSway(Game.TS);
         }
 
         // Do not draw procedural grass over atlas tiles — wait for atlas-baked frames.
@@ -371,33 +381,33 @@ const VQ = (() => {
         const rad    = C.swayRadius;
 
         // Only iterate the viewport — same bounds as drawAnimatedTiles
-        const stx = Math.max(0,               Math.floor(cam.x / TS));
-        const sty = Math.max(0,               Math.floor(cam.y / TS));
-        const etx = Math.min(currentMap.w - 1, Math.ceil((cam.x + cW) / TS));
-        const ety = Math.min(currentMap.h - 1, Math.ceil((cam.y + cH) / TS));
+        const stx = Math.max(0,               Math.floor(Game.cam.x / Game.TS));
+        const sty = Math.max(0,               Math.floor(Game.cam.y / Game.TS));
+        const etx = Math.min(Game.currentMap.w - 1, Math.ceil((Game.cam.x + Game.cW) / Game.TS));
+        const ety = Math.min(Game.currentMap.h - 1, Math.ceil((Game.cam.y + Game.cH) / Game.TS));
 
         // Per-tile wind phase offset — tiles don't all sway in unison
-        const tBase = timeMs * C.swayPhaseScale * C.swayFps;
+        const tBase = Game.timeMs * C.swayPhaseScale * C.swayFps;
 
         for (let ty = sty; ty <= ety; ty++) {
             // Quick range rejection — skip rows far from player
-            if (Math.abs(ty - player.y) > rad) continue;
+            if (Math.abs(ty - Game.player.y) > rad) continue;
             for (let tx = stx; tx <= etx; tx++) {
-                if (Math.abs(tx - player.x) > rad) continue;
-                const tile = currentMap.tiles[ty][tx];
-                if (tile !== TILE.GRASS) continue;
+                if (Math.abs(tx - Game.player.x) > rad) continue;
+                const tile = Game.currentMap.tiles[ty][tx];
+                if (tile !== Game.TILE.GRASS) continue;
 
                 // Per-tile phase offset — creates a ripple effect across the field
                 const phase      = ((tx * 3 + ty * 5) & 7) / 8; // 0..0.875
                 const localStep  = Math.floor((tBase + phase * 3) % 3);
                 if (localStep === 0) continue; // no overdraw for neutral frame
 
-                const v   = currentMap.variantMap
-                    ? currentMap.variantMap[ty * currentMap.w + tx] & 7
+                const v   = Game.currentMap.variantMap
+                    ? Game.currentMap.variantMap[ty * Game.currentMap.w + tx] & 7
                     : (tx * 7 + ty * 13) & 7;
-                const spx = Math.round(tx * TS - cam.x);
-                const spy = Math.round(ty * TS - cam.y);
-                ctx.drawImage(frames[v][localStep], spx, spy, TS, TS);
+                const spx = Math.round(tx * Game.TS - Game.cam.x);
+                const spy = Math.round(ty * Game.TS - Game.cam.y);
+                Game.ctx.drawImage(frames[v][localStep], spx, spy, Game.TS, Game.TS);
             }
         }
     }
@@ -416,45 +426,45 @@ const VQ = (() => {
     // ═══════════════════════════════════════════════════════════════
 
     function renderColorGrade() {
-        if (!currentMap) return;
+        if (!Game.currentMap) return;
 
-        const isDark     = currentMap.dark;
-        const isInterior = !isDark && !!currentMap.returnMap;
+        const isDark     = Game.currentMap.dark;
+        const isInterior = !isDark && !!Game.currentMap.returnMap;
 
-        ctx.save();
+        Game.ctx.save();
 
         // ── Warm amber screen overlay ──────────────────────────────
         // Very subtle — α=0.04 shifts neutral greys ~4-8 points warmer.
-        ctx.globalCompositeOperation = 'screen';
-        ctx.globalAlpha = isDark ? 0.022 : C.warmAlpha;
-        ctx.fillStyle   = '#ffaa28'; // warm golden amber (richer than pure orange)
-        ctx.fillRect(0, 0, cW, cH);
+        Game.ctx.globalCompositeOperation = 'screen';
+        Game.ctx.globalAlpha = isDark ? 0.022 : C.warmAlpha;
+        Game.ctx.fillStyle   = '#ffaa28'; // warm golden amber (richer than pure orange)
+        Game.ctx.fillRect(0, 0, Game.cW, Game.cH);
 
         // ── Vignette ───────────────────────────────────────────────
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
+        Game.ctx.globalCompositeOperation = 'source-over';
+        Game.ctx.globalAlpha = 1;
 
         const vigAlpha = isDark ? C.vigDungeon : isInterior ? C.vigInterior : C.vigOutdoor;
-        const innerR   = Math.min(cW, cH) * (isDark ? 0.18 : isInterior ? 0.26 : 0.40);
-        const outerR   = Math.min(cW, cH) * (isDark ? 0.62 : isInterior ? 0.70 : 0.92);
+        const innerR   = Math.min(Game.cW, Game.cH) * (isDark ? 0.18 : isInterior ? 0.26 : 0.40);
+        const outerR   = Math.min(Game.cW, Game.cH) * (isDark ? 0.62 : isInterior ? 0.70 : 0.92);
 
         // Rebuild gradient only when canvas size or map type changes.
         // createRadialGradient + addColorStop costs ~0.1ms per frame when called
         // every frame — caching drops this to a single object lookup.
         const cgKey = `${isDark ? 'd' : isInterior ? 'i' : 'o'}`;
-        if (!_cgGrd || _cgGrdW !== cW || _cgGrdH !== cH || _cgGrdKey !== cgKey) {
-            _cgGrd = ctx.createRadialGradient(cW * 0.5, cH * 0.5, innerR,
-                                               cW * 0.5, cH * 0.5, outerR);
+        if (!_cgGrd || _cgGrdW !== Game.cW || _cgGrdH !== Game.cH || _cgGrdKey !== cgKey) {
+            _cgGrd = Game.ctx.createRadialGradient(Game.cW * 0.5, Game.cH * 0.5, innerR,
+                                               Game.cW * 0.5, Game.cH * 0.5, outerR);
             // Slightly warm-tinted black — avoids the "cold TV scanline" look
             // of pure black vignettes.
             _cgGrd.addColorStop(0, 'rgba(0,0,0,0)');
             _cgGrd.addColorStop(1, `rgba(6,2,0,${vigAlpha})`);
-            _cgGrdW = cW; _cgGrdH = cH; _cgGrdKey = cgKey;
+            _cgGrdW = Game.cW; _cgGrdH = Game.cH; _cgGrdKey = cgKey;
         }
-        ctx.fillStyle = _cgGrd;
-        ctx.fillRect(0, 0, cW, cH);
+        Game.ctx.fillStyle = _cgGrd;
+        Game.ctx.fillRect(0, 0, Game.cW, Game.cH);
 
-        ctx.restore();
+        Game.ctx.restore();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -467,41 +477,41 @@ const VQ = (() => {
     // ═══════════════════════════════════════════════════════════════
 
     function renderOutdoorTorchGlow() {
-        if (!currentMap || currentMap.dark) return; // dark maps: renderLighting handles it
+        if (!Game.currentMap || Game.currentMap.dark) return; // dark maps: renderLighting handles it
 
-        const stx = Math.max(0,               Math.floor(cam.x / TS) - 2);
-        const sty = Math.max(0,               Math.floor(cam.y / TS) - 2);
-        const etx = Math.min(currentMap.w - 1, Math.ceil((cam.x + cW) / TS) + 2);
-        const ety = Math.min(currentMap.h - 1, Math.ceil((cam.y + cH) / TS) + 2);
+        const stx = Math.max(0,               Math.floor(Game.cam.x / Game.TS) - 2);
+        const sty = Math.max(0,               Math.floor(Game.cam.y / Game.TS) - 2);
+        const etx = Math.min(Game.currentMap.w - 1, Math.ceil((Game.cam.x + Game.cW) / Game.TS) + 2);
+        const ety = Math.min(Game.currentMap.h - 1, Math.ceil((Game.cam.y + Game.cH) / Game.TS) + 2);
 
         // Quick early-exit — scan for at least one torch in view
         let found = false;
         outer: for (let ty = sty; ty <= ety; ty++) {
             for (let tx = stx; tx <= etx; tx++) {
-                if (currentMap.tiles[ty]?.[tx] === TILE.TORCH) { found = true; break outer; }
+                if (Game.currentMap.tiles[ty]?.[tx] === Game.TILE.TORCH) { found = true; break outer; }
             }
         }
         if (!found) return;
 
-        const t = timeMs * 0.001;
+        const t = Game.timeMs * 0.001;
         _ensureVqDisc();
         const dr = _vqTorchDisc.width >> 1;
-        ctx.save();
-        ctx.globalCompositeOperation = 'screen';
+        Game.ctx.save();
+        Game.ctx.globalCompositeOperation = 'screen';
 
         for (let ty = sty; ty <= ety; ty++) {
             for (let tx = stx; tx <= etx; tx++) {
-                if (currentMap.tiles[ty]?.[tx] !== TILE.TORCH) continue;
-                const lx = Math.round(tx * TS - cam.x + TS * 0.5);
-                const ly = Math.round(ty * TS - cam.y + TS * 0.5);
+                if (Game.currentMap.tiles[ty]?.[tx] !== Game.TILE.TORCH) continue;
+                const lx = Math.round(tx * Game.TS - Game.cam.x + Game.TS * 0.5);
+                const ly = Math.round(ty * Game.TS - Game.cam.y + Game.TS * 0.5);
                 // Flicker via globalAlpha — disc pre-rendered at peak alpha=1
                 const fl = C.torchAlpha + 0.028 * Math.sin(t * 10.5 + tx * 2.7 + ty * 1.3);
-                ctx.globalAlpha = fl * 2.8;
-                ctx.drawImage(_vqTorchDisc, lx - dr, ly - dr);
+                Game.ctx.globalAlpha = fl * 2.8;
+                Game.ctx.drawImage(_vqTorchDisc, lx - dr, ly - dr);
             }
         }
-        ctx.globalAlpha = 1;
-        ctx.restore();
+        Game.ctx.globalAlpha = 1;
+        Game.ctx.restore();
     }
 
     // ─── invalidate — call on resize or TS change ─────────────────

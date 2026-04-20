@@ -521,9 +521,7 @@ window.gameVolumePct = 50;
 function syncVolSliders(pct) {
     window.gameVolumePct = pct;
     // Apply to live audio if game is running
-    if (typeof masterGain !== 'undefined' && masterGain) {
-        masterGain.gain.value = (pct / 100) * 0.25;
-    }
+    if (typeof audio !== 'undefined') audio.setVolume(pct);
     // Keep both sliders in sync
     const optVol   = document.getElementById('opt-vol');
     const pauseVol = document.getElementById('pause-vol');
@@ -798,9 +796,25 @@ document.getElementById('begin-btn').addEventListener('click', () => {
     fadeOverlay('in');
 });
 </script>
+<!-- Load order contract (Pass 10):
+     game-noise → game-constants → world → audio → input → battle →
+     particles → game-ui → game → game-loop → render → tile-renderer →
+     TILE_MANIFEST → SpriteRenderer → visual-quality
+     game-constants.js initializes window.Game; game.js and render.js
+     populate Game.* properties (including Game.ctx) before SpriteRenderer
+     and visual-quality load. Violating this order triggers runtime assertions
+     in SpriteRenderer.js and visual-quality.js. -->
 <script src="/static/js/game-noise.js"></script>
 <script src="/static/js/game-constants.js"></script>
+<script src="/static/js/world.js"></script>
+<script src="/static/js/audio.js"></script>
+<script src="/static/js/input.js"></script>
+<script src="/static/js/battle.js"></script>
+<script src="/static/js/particles.js"></script>
+<script src="/static/js/game-ui.js"></script>
 <script src="/static/js/game.js"></script>
+<script src="/static/js/game-loop.js"></script>
+<script src="/static/js/render.js"></script>
 <script src="/static/js/tile-renderer.js"></script>
 <script src="/static/js/TILE_MANIFEST.js"></script>
 <script src="/static/js/SpriteRenderer.js"></script>

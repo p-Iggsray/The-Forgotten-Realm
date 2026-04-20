@@ -2,6 +2,8 @@
 
 window.Game = window.Game || {};
 
+(function() {
+
 // ═══════════════════════════════════════════════════════
 //  TILE DEFINITIONS
 // ═══════════════════════════════════════════════════════
@@ -168,6 +170,34 @@ const PALETTE = Game.PALETTE = Object.freeze({
 });
 
 // ═══════════════════════════════════════════════════════
+//  CLASS & COMBAT CONSTANTS
+// ═══════════════════════════════════════════════════════
+Game.CLASS_STATS = Object.freeze({
+    Warrior: { atk:16, def:8,  spd:'Normal' },
+    Rogue:   { atk:13, def:5,  spd:'Fast'   },
+    Wizard:  { atk:20, def:3,  spd:'Slow'   },
+    Cleric:  { atk:11, def:10, spd:'Normal' },
+});
+Game.CLASS_COLORS = Object.freeze({
+    Warrior: PALETTE.CLASS_WARRIOR,
+    Rogue:   PALETTE.CLASS_ROGUE,
+    Wizard:  PALETTE.CLASS_WIZARD,
+    Cleric:  PALETTE.CLASS_CLERIC,
+});
+Game.CLASS_CLOAK = Object.freeze({
+    Warrior: PALETTE.CLOAK_WARRIOR,
+    Rogue:   PALETTE.CLOAK_ROGUE,
+    Wizard:  PALETTE.CLOAK_WIZARD,
+    Cleric:  PALETTE.CLOAK_CLERIC,
+});
+Game.ENEMY_DMG_FLOOR    = 0.30;
+Game.ENEMY_DMG_VARIANCE = 0.15;
+Game.ENEMY_MISS_CHANCE  = 0.08;
+Game.ENEMY_CRIT_CHANCE  = 0.07;
+Game.ENEMY_CRIT_MULT    = 1.50;
+Game.DEFEAT_TRANSITION_MS = 600;
+
+// ═══════════════════════════════════════════════════════
 //  ENEMY DEFINITIONS
 // ═══════════════════════════════════════════════════════
 Game.ENEMY_DEFS = {
@@ -221,3 +251,5 @@ Game.QUEST_GIVER_FLAGS = {
     blacksmith:  'quest_brothers_fate_given',
     traveler:    'quest_sealed_truth_given',
 };
+
+})();

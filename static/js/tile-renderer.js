@@ -917,6 +917,12 @@ class TileRenderer {
     // Discard all cached tiles (call after resize or atlas change).
     invalidate() { this._cache.clear(); }
 
+    // Return the cached offscreen canvas for (row, variant, ts), or null.
+    // Public API used by SpriteRenderer._getCachedVariant().
+    getCachedVariant(row, variant, ts) {
+        return this._cache.get(`${row}:${variant}:${ts}`) ?? null;
+    }
+
     // Draw tile (sheetRow, variant) to ctx at (dx, dy) at tile size ts.
     // dx/dy must already be rounded to integers by the caller.
     draw(ctx, sheetRow, variant, dx, dy, ts) {
