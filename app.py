@@ -18,6 +18,29 @@ def _get_groq():
         raise RuntimeError("GROQ_API_KEY environment variable is not set")
     return Groq(api_key=key)
 
+
+_openrouter_client = None
+
+def _get_openrouter():
+    global _openrouter_client
+    if _openrouter_client is None:
+        key = os.getenv('OPENROUTER_API_KEY')
+        if not key:
+            return None
+        from openai import OpenAI
+        _openrouter_client = OpenAI(
+            base_url='https://openrouter.ai/api/v1',
+            api_key=key,
+        )
+    return _openrouter_client
+
+_OPENROUTER_MODELS = [
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'google/gemma-2-9b-it:free',
+    'mistralai/mixtral-8x7b-instruct:free',
+    'meta-llama/llama-3.1-8b-instruct:free',
+]
+
 # ── NPC Dialogue ──────────────────────────────────────────────────────────────
 
 # ── Narrator ──────────────────────────────────────────────────────────────────
@@ -101,9 +124,9 @@ def score_relevance(player_input: str, npc_response: str) -> float:
 
     if player_input.strip().endswith('?'):
         answer_signals = ['yes', 'no', 'i don', "i can't", 'never', 'always',
-                          'because', 'when', 'it was', 'he', 'she', 'they', 'we']
+                          'because', 'when', 'it was', 'he', 'she', 'they']
         if not any(sig in npc_response.lower() for sig in answer_signals):
-            score -= 0.25
+            score -= 0.4
 
     player_words = set(w.lower() for w in player_input.split() if len(w) > 4)
     response_words = set(w.lower() for w in npc_response.split())
@@ -144,20 +167,27 @@ def _build_fallback_prefix(npc_id: str, player_text: str) -> str:
 
 # ── Model routing ─────────────────────────────────────────────────────────────
 MODEL_ROUTING = {
-    'dialogue_major': 'llama-3.3-70b-versatile',
-    'dialogue_minor': 'llama-3.1-8b-instant',
-    'narration':      'llama-3.1-8b-instant',
-    'fact_extraction':'llama-3.1-8b-instant',
+    'dialogue_major':  'llama-3.3-70b-versatile',
+    'dialogue_minor':  'llama-3.1-8b-instant',
+    'narration':       'llama-3.1-8b-instant',
+    'fact_extraction': 'llama-3.1-8b-instant',
 }
+
+# Tried in order on 429 — each model has an independent daily limit on Groq
+_DIALOGUE_FALLBACK_CHAIN = [
+    'gemma2-9b-it',          # Google Gemma 2 9B — strong mid-tier
+    'mixtral-8x7b-32768',    # Mixtral MoE — decent mid-tier
+    'llama-3.1-8b-instant',  # smallest model, highest quota
+]
 _MAJOR_NPCS = {'guide', 'elder', 'blacksmith', 'traveler'}
 
 # ── Per-NPC token limits ──────────────────────────────────────────────────────
 NPC_MAX_TOKENS = {
-    'guide':      180,
-    'elder':      160,
-    'blacksmith':  60,
-    'traveler':   150,
-    'default':    100,
+    'guide':      120,   # was 180
+    'elder':      110,   # was 160
+    'blacksmith':  50,   # was 60
+    'traveler':   100,   # was 150
+    'default':     80,   # was 100
 }
 NPC_NARRATION_MAX_TOKENS = 50
 
@@ -585,6 +615,21 @@ _CHARACTER_RULES = """CHARACTER RULES:
 - When you explicitly give/offer the player their quest task, add QUEST_GIVEN on its own line (once only).
 - Add END_CONVERSATION on its own line when the conversation has reached a natural close: the player agreed to the task, said goodbye, or the exchange has clearly concluded. Do NOT keep talking after the player signals they're ready to go. Read the room."""
 
+# Condensed personality used in the short system prompt (follow-up turns)
+_NPC_SHORT_PERSONALITY = {
+    'guide':      "Rowan, 22, self-appointed village greeter. Talks fast, self-interrupts, uses 'kind of'/'sort of', over-explains then notices.",
+    'elder':      "Elder Maren, 74. Formal, archaic speech, 'by the old stones'. Deep fear managed carefully. Wife Edrea died 12 years ago.",
+    'blacksmith': "Daran, blacksmith. STRICT: every sentence 8 words or fewer. Grunts, terse, no questions. Brother Henrick missing — will not discuss.",
+    'traveler':   "Veyla, ancient elven traveler. Incomplete metaphors, cryptic layering, tests people. Knows far more than she reveals.",
+}
+
+_SHORT_SIGNAL_TOKENS = (
+    "SIGNAL TOKENS (end of reply only, never say aloud): "
+    "QUEST_GIVEN | END_CONVERSATION | GIVE_ITEM:[id] | UNLOCK_AREA:[key] | "
+    "WORLD_EVENT:[key] | REVEAL_LORE:[key] | REPUTATION_CHANGE:{npc_id}:[+1/-1] | "
+    'OPTIONS:["opt1","opt2"]'
+)
+
 
 def _cleanup_stale_sessions():
     cutoff = _time.time() - SESSION_TTL_SECONDS
@@ -825,16 +870,29 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
                 "Give them space to respond."
             )
 
+        short_system = (
+            f"You are {npc['name']} in a dark fantasy RPG.\n"
+            f"{_CRITICAL_RESPONSE_RULE}\n"
+            f"{_RESPONSE_BEHAVIOR_RULES}\n"
+            f"{_NPC_SHORT_PERSONALITY.get(npc_id, 'A villager of Eldoria.')}\n"
+            f"{_CHARACTER_RULES}\n"
+            f"{_SHORT_SIGNAL_TOKENS.format(npc_id=npc_id)}\n"
+            f"RAPPORT: {npc_rapport} | MOOD: {flags.get('npcMoods', {}).get(npc_id, 'neutral')} | "
+            f"PLAYER NAME (rapport 2+ only): {flags.get('charName', 'the stranger')}"
+        )
+        if _rapport_gate:
+            short_system += f"\n{_rapport_gate}"
+        session['short_system'] = short_system
+
         session['history'] = [
             {"role": "system", "content": system_msg},
             {"role": "user",   "content": opener},
         ]
     else:
         session['history'].append({"role": "user", "content": player_text})
-        # Reminder injected before the player's message — most recent system instruction the model sees
         session['history'].insert(-1, {
             "role": "system",
-            "content": f"[REMINDER: The player just said: \"{player_text}\". Address this directly before responding.]"
+            "content": f"RESPOND ONLY to: \"{player_text}\" — no greeting, no intro, direct answer."
         })
 
     return Response(
@@ -844,10 +902,181 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
     )
 
 
+# ── Procedural offline response system ───────────────────────────────────────
+_PROC_TEMPLATES = {
+    'guide': {
+        'identity':  ["Rowan — I'm Rowan. Kind of the unofficial greeter here. Self-appointed, but still.",
+                      "Oh! I'm Rowan. Sort of the welcome committee? Nobody asked me to, I just — do it.",
+                      "Name's Rowan. I watch for newcomers. It's not an official thing, but — someone has to."],
+        'location':  ["This is Eldoria. Small, I know. But it's home.",
+                      "You're in Eldoria — sitting on the edge of the southern flatlands.",
+                      "Eldoria. Population is... less than it used to be. Sorry, that came out wrong."],
+        'mines':     ["The mines? Yeah. Most people don't go near them anymore. For good reason.",
+                      "There's been something wrong down there. For a couple of years now.",
+                      "I'd really rather not — the mines are not somewhere you want to be. Trust me."],
+        'quest':     ["Talk to Elder Maren. She knows more than I do about — all of this.",
+                      "There might be something you could help with. But the Elder's the one to ask.",
+                      "If you want to help, honestly? Go find the Elder. She's been trying to sort this out."],
+        'greeting':  ["Oh — hey. Didn't see you there.",
+                      "Hey! Good, you're still here.",
+                      "Oh, hi. Are you doing okay?"],
+        'farewell':  ["Oh — okay. Take care. Come back if you need anything.",
+                      "Right. Stay safe out there.",
+                      "Okay. I'll be around."],
+        'agreement': ["Good. Yeah — that's good.",
+                      "Okay! Great. I think that's the right call.",
+                      "Right, okay. Good."],
+        'confusion': ["Sorry, I didn't quite follow that — can you say it a different way?",
+                      "I want to make sure I understand. Can you explain that again?",
+                      "Okay so I'm a little lost. What do you mean exactly?"],
+        'lore':      ["There are stories. Old ones. Elder Maren knows more than me.",
+                      "I've heard things. Most of it I'm not sure about. The Elder's better for that.",
+                      "Some of the older villagers talk about it. I don't know enough to say."],
+        'default':   ["Right. I'm listening, just — give me a second.",
+                      "Okay. Yeah. I heard you.",
+                      "I'm here. What do you need?"],
+    },
+    'elder': {
+        'identity':  ["I am Maren. Elder of Eldoria — a title that carries more weight than when I took it.",
+                      "Maren. I have been Elder here for thirty-one years. By the old stones, that number still startles me.",
+                      "My name is Maren. I should think you already knew that. These days, certainty is rare."],
+        'location':  ["You stand in Eldoria. A village of modest history and, I am afraid, immodest troubles.",
+                      "This is Eldoria. Two centuries of quiet — and now, this.",
+                      "Eldoria. I have lived here for seventy years. I believed it would remain peaceful. I was mistaken."],
+        'mines':     ["The mines are not safe. They have not been safe for two years. I do not exaggerate.",
+                      "Something old is in those mines. Something that should have remained where it was placed.",
+                      "We lost seven people three weeks ago. One came back. I will say no more than that."],
+        'quest':     ["There is work to be done. I have been searching for someone willing — but we should speak properly.",
+                      "I need someone who can enter those mines. I do not say this without knowing what I am asking.",
+                      "If you wish to help — come and sit. This is not a brief conversation."],
+        'greeting':  ["Ah. You are still here. Good.",
+                      "I wondered when you would return.",
+                      "Come in. Sit, if you need to."],
+        'farewell':  ["Go carefully. I mean that sincerely.",
+                      "May the old stones keep you.",
+                      "Come back. I am asking you — please come back."],
+        'agreement': ["Then it is settled. I am — grateful is the word.",
+                      "Good. I had hoped you would say that.",
+                      "Yes. Good."],
+        'confusion': ["I am not certain I understand. Would you say it again?",
+                      "Perhaps I am slow today. Speak plainly, please.",
+                      "Forgive me. What is it you are asking?"],
+        'lore':      ["What I know, I will tell you when the time is right. There is much to say.",
+                      "The history of those mines is longer than Eldoria itself. Sit down.",
+                      "By the old stones — you are asking about old things. I am glad someone is."],
+        'default':   ["I hear you.",
+                      "I am listening. Continue.",
+                      "Give me a moment to think on that."],
+    },
+    'blacksmith': {
+        'identity':  ["Daran. The blacksmith.", "Name's Daran.", "You know who I am."],
+        'location':  ["Eldoria. You're in it.", "The forge. Obviously.", "Village square's that way."],
+        'mines':     ["Don't ask.", "None of your concern.", "Stay away from them."],
+        'quest':     ["Talk to the Elder.", "Not my problem.", "Ask someone else."],
+        'greeting':  ["Hm.", "You again.", "What do you want."],
+        'farewell':  ["Right.", "Go on then.", "..."],
+        'agreement': ["Fine.", "Do it then.", "Aye."],
+        'confusion': ["Speak plain.", "What.", "Say it straight."],
+        'lore':      ["Ask the Elder.", "Old stories. Not my thing.", "Don't know."],
+        'default':   ["Hm.", "...", "Right."],
+    },
+    'traveler': {
+        'identity':  ["My name changes. Veyla is close enough for now.",
+                      "Names are less important than what a person carries. But — Veyla.",
+                      "The name I was given is older than this village. Veyla will do."],
+        'location':  ["You know where you are. The question is whether you know what it means.",
+                      "Eldoria. There are places like it, and places very unlike it. This is one of each.",
+                      "A village on the edge of something. The geography is the least important part."],
+        'mines':     ["Something sleeps down there that was never meant to wake. That's not a metaphor.",
+                      "I have been watching those mines for longer than you would believe.",
+                      "What's in those mines has been there since before your oldest story."],
+        'quest':     ["Purpose is something you find, not something given. But — there may be a direction.",
+                      "I could tell you what needs doing. Whether you're the one to do it — I'm still deciding.",
+                      "There is work ahead of you. Whether you're ready is a different question."],
+        'greeting':  ["You found me again. Interesting.",
+                      "I had a feeling you would come back.",
+                      "Ah. There you are."],
+        'farewell':  ["Go. The road will tell you what you need.",
+                      "Until next time, then.",
+                      "Remember the part of this that stays with you. Not all of it — just that part."],
+        'agreement': ["Then we understand each other.",
+                      "Good. That's — good.",
+                      "I thought you would see it that way."],
+        'confusion': ["You're reaching for something. Take your time.",
+                      "The thing you're trying to say — let it come.",
+                      "Interesting. Say that again, differently."],
+        'lore':      ["Some histories are too old for books. This is one of them.",
+                      "What I know would take longer than you have. But I can give you the shape of it.",
+                      "The seal was not built to last forever. No one who built it admitted that, but —"],
+        'default':   ["Interesting.", "Yes.", "I'm listening. Take your time."],
+    },
+}
+_PROC_DEFAULT_BANK = {'default': ["I hear you.", "Right.", "Go on."]}
+
+
+def _classify_intent(text: str) -> str:
+    t = text.lower()
+    if any(w in t for w in ['who are you', 'your name', 'what is your name', "you're called", 'introduce']):
+        return 'identity'
+    if any(w in t for w in ['where am i', 'where is this', 'what place', 'what village', 'what town']):
+        return 'location'
+    if any(w in t for w in ['mine', 'mines', 'darkness', 'dungeon', 'cursed', 'monster', 'hollow']):
+        return 'mines'
+    if any(w in t for w in ['seal', 'lore', 'history', 'ancient', 'old story', 'legend', 'hollow king', 'what happened']):
+        return 'lore'
+    if any(w in t for w in ['quest', 'task', 'what should i do', 'how can i help', 'what do you need', 'what now']):
+        return 'quest'
+    if any(w in t for w in ['hello', 'hi ', 'hey ', 'greetings', 'good day', 'good morning']):
+        return 'greeting'
+    if any(w in t for w in ['bye', 'goodbye', 'farewell', 'i must go', 'leaving', 'see you']):
+        return 'farewell'
+    if any(w in t for w in ['yes', 'okay', 'sure', 'alright', 'i will', "i'll do it", 'agreed', 'of course']):
+        return 'agreement'
+    if any(w in t for w in ['huh', "don't understand", 'confused', 'unclear', 'what do you mean']):
+        return 'confusion'
+    return 'default'
+
+
+def _procedural_response(npc_id: str, player_text: str, session: dict) -> str:
+    import random as _r
+    intent    = _classify_intent(player_text)
+    bank      = _PROC_TEMPLATES.get(npc_id, _PROC_DEFAULT_BANK)
+    templates = bank.get(intent, bank.get('default', ["I hear you."]))
+    used      = session.setdefault('_proc_used', set())
+    options   = [t for t in templates if t not in used] or templates
+    if not options:
+        used.clear()
+        options = templates
+    chosen = _r.choice(options)
+    used.add(chosen)
+    return chosen
+
+
+# ── History trimming ──────────────────────────────────────────────────────────
+_MAX_HISTORY_EXCHANGES = 6  # keep system + opener + last N user/assistant pairs
+
+def _trim_history(history: list) -> list:
+    """Keep system message, opener pair, and the most recent exchanges."""
+    if len(history) <= 2 + _MAX_HISTORY_EXCHANGES * 2:
+        return history
+    # history[0] = system, history[1] = opener (user), history[2] = first assistant reply
+    # Preserve those 3, then keep the tail
+    head = history[:3]
+    tail = history[3:]
+    keep = _MAX_HISTORY_EXCHANGES * 2  # user+assistant pairs
+    return head + tail[-keep:]
+
+
 def _interact_stream(session, session_id, npc_id, player_text=''):
     model  = MODEL_ROUTING['dialogue_major' if npc_id in _MAJOR_NPCS else 'dialogue_minor']
     tokens = NPC_MAX_TOKENS.get(npc_id, NPC_MAX_TOKENS['default'])
     temp   = NPC_TEMPERATURE.get(npc_id, NPC_TEMPERATURE['default'])
+    session['history'] = _trim_history(session['history'])
+
+    # Use compressed system prompt for follow-up turns to save tokens
+    api_history = session['history']
+    if session['turn_count'] > 0 and session.get('short_system') and len(api_history) > 1:
+        api_history = [{'role': 'system', 'content': session['short_system']}] + api_history[1:]
 
     # ── Phase 1: buffered primary call ────────────────────────────────────────
     had_error  = False
@@ -859,14 +1088,57 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
     else:
         try:
             resp = _get_groq().chat.completions.create(
-                model=model, messages=session['history'],
+                model=model, messages=api_history,
                 max_tokens=tokens, temperature=temp, stream=False,
             )
             full_reply = resp.choices[0].message.content or ''
         except Exception as e:
-            had_error  = True
-            full_reply = _fallback_line(npc_id)
-            print(f'[STREAM-ERR] [{npc_id}] {e}', flush=True)
+            err_str = str(e)
+            if '429' in err_str:
+                for _fb_model in _DIALOGUE_FALLBACK_CHAIN:
+                    if _fb_model == model:
+                        continue
+                    print(f'[RATE-LIMIT] [{npc_id}] trying {_fb_model}', flush=True)
+                    try:
+                        _resp = _get_groq().chat.completions.create(
+                            model=_fb_model,
+                            messages=api_history,
+                            max_tokens=tokens, temperature=temp, stream=False,
+                        )
+                        full_reply = _resp.choices[0].message.content or ''
+                        break
+                    except Exception as _e2:
+                        _e2s = str(_e2)
+                        if '401' in _e2s:
+                            had_error  = True
+                            full_reply = _fallback_line(npc_id)
+                            print(f'[STREAM-ERR] [{npc_id}] auth error: {_e2}', flush=True)
+                            break
+                        print(f'[SKIP] [{npc_id}] {_fb_model} unavailable, trying next', flush=True)
+                else:
+                    # All Groq models exhausted — try OpenRouter before going offline
+                    _or_client = _get_openrouter()
+                    if _or_client:
+                        for _or_model in _OPENROUTER_MODELS:
+                            print(f'[OPENROUTER] [{npc_id}] trying {_or_model}', flush=True)
+                            try:
+                                _or_resp = _or_client.chat.completions.create(
+                                    model=_or_model,
+                                    messages=api_history,
+                                    max_tokens=tokens, temperature=temp,
+                                )
+                                full_reply = _or_resp.choices[0].message.content or ''
+                                if full_reply:
+                                    break
+                            except Exception as _ore:
+                                print(f'[OPENROUTER-ERR] [{npc_id}] {_or_model}: {_ore}', flush=True)
+                    if not full_reply:
+                        print(f'[OFFLINE] [{npc_id}] all providers exhausted, using procedural response', flush=True)
+                        full_reply = _procedural_response(npc_id, player_text, session)
+            else:
+                had_error  = True
+                full_reply = _fallback_line(npc_id)
+                print(f'[STREAM-ERR] [{npc_id}] {e}', flush=True)
         finally:
             _llm_sem.release()
 
@@ -879,9 +1151,25 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
         or len(session['history']) < 3
     )
 
+    def _is_repetition(reply: str, history: list) -> bool:
+        reply_lower = reply.lower()
+        prev_assistant = [m['content'].lower() for m in history if m.get('role') == 'assistant']
+        for prev in prev_assistant:
+            prev_words = prev.split()
+            for i in range(len(prev_words) - 4):
+                phrase = ' '.join(prev_words[i:i+5])
+                if phrase in reply_lower:
+                    return True
+        return False
+
     if not skip_validation:
         _relevance_stats['total_interactions'] += 1
-        score = score_relevance(player_text, full_reply)
+        if _is_repetition(full_reply, session['history']):
+            score = 0.0
+            if os.getenv('DEBUG_RELEVANCE'):
+                print(f'[RELEVANCE REPEAT] [{npc_id}] recycled previous assistant text', flush=True)
+        else:
+            score = score_relevance(player_text, full_reply)
 
         if os.getenv('DEBUG_RELEVANCE'):
             print(f'[RELEVANCE] [{npc_id}] score={score:.2f} player={player_text!r}', flush=True)
@@ -896,7 +1184,7 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
                 print(f'[RELEVANCE FAIL] Retry triggered: True', flush=True)
 
             retry_reply = full_reply
-            correction_history = session['history'] + [
+            correction_history = api_history + [
                 {"role": "user", "content": build_correction_prompt(player_text, full_reply)}
             ]
 
