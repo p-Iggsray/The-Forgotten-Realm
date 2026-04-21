@@ -17,6 +17,126 @@ const battleSystem = (() => {
         shakeTimer: 0, enemyHitType: 'normal',
     };
 
+    // ── Background palette & cache ───────────────────────────────────────────
+    const _BG_PALETTES = {
+        shade:  { base:'#0a0514', rock1:'#08031a', rock2:'#0d0625',
+                  torch:'rgba(60,20,120,',  ground:'#0e0618', divider:'#1a0830' },
+        lurker: { base:'#0f0906', rock1:'#130b04', rock2:'#1a1008',
+                  torch:'rgba(180,70,15,',  ground:'#180e08', divider:'#2a1608' },
+    };
+
+    const _STALACTITES = [
+        {x:0.05, w:0.060, len:0.22}, {x:0.15, w:0.038, len:0.14},
+        {x:0.25, w:0.072, len:0.31}, {x:0.37, w:0.048, len:0.17},
+        {x:0.48, w:0.055, len:0.26}, {x:0.59, w:0.062, len:0.11},
+        {x:0.70, w:0.042, len:0.29}, {x:0.81, w:0.058, len:0.19},
+        {x:0.91, w:0.050, len:0.15},
+    ];
+
+    let _bgCache = null, _bgCacheKey = '';
+
+    function _buildBgCache(type, W, H) {
+        const wallH = H * 0.52;
+        const BP = _BG_PALETTES[type] || _BG_PALETTES.shade;
+        const off = document.createElement('canvas');
+        off.width = W; off.height = H;
+        const c = off.getContext('2d');
+        c.imageSmoothingEnabled = false;
+
+        // Far wall base
+        c.fillStyle = BP.base;
+        c.fillRect(0, 0, W, wallH);
+
+        // Rock face texture — layered translucent ellipses at seeded positions
+        const rockPos = [
+            {x:0.12, y:0.30, rx:0.22, ry:0.28, col:BP.rock1, a:0.55},
+            {x:0.45, y:0.18, rx:0.30, ry:0.20, col:BP.rock2, a:0.45},
+            {x:0.75, y:0.36, rx:0.24, ry:0.24, col:BP.rock1, a:0.50},
+            {x:0.60, y:0.05, rx:0.18, ry:0.16, col:BP.rock2, a:0.40},
+            {x:0.28, y:0.42, rx:0.20, ry:0.14, col:BP.rock1, a:0.38},
+        ];
+        for (const rp of rockPos) {
+            c.globalAlpha = rp.a;
+            c.fillStyle = rp.col;
+            c.beginPath(); c.ellipse(rp.x*W, rp.y*wallH, rp.rx*W, rp.ry*wallH, 0, 0, Math.PI*2); c.fill();
+        }
+        c.globalAlpha = 1;
+
+        // Lower half (UI zone) — slightly lighter cave floor base
+        c.fillStyle = BP.ground;
+        c.fillRect(0, wallH, W, H - wallH);
+
+        // Stalactites — dark silhouettes with subtle right-edge highlight
+        for (const st of _STALACTITES) {
+            const bx = st.x * W, hw = st.w * W * 0.5, len = st.len * wallH;
+            c.fillStyle = '#07020f';
+            c.beginPath(); c.moveTo(bx - hw, 0); c.lineTo(bx + hw, 0); c.lineTo(bx, len); c.closePath(); c.fill();
+            // Subtle light edge (torch from left — right face catches light)
+            c.strokeStyle = 'rgba(80,60,100,0.18)'; c.lineWidth = 1;
+            c.beginPath(); c.moveTo(bx + hw, 0); c.lineTo(bx, len); c.stroke();
+        }
+
+        _bgCache = off;
+        _bgCacheKey = `${W}x${H}x${type}`;
+    }
+
+    // ── Particle pool ────────────────────────────────────────────────────────
+    const _PMAX = 14;
+    const _pPool = Array.from({length: _PMAX}, () =>
+        ({x:0, y:0, vx:0, vy:0, life:0, maxLife:1, sz:1}));
+
+    function _resetParticles() { for (const p of _pPool) p.life = 0; }
+
+    function _tickParticles(type, wallH) {
+        for (const p of _pPool) {
+            p.x += p.vx; p.y += p.vy; p.life--;
+            if (p.life > 0 && p.y >= 0 && p.y < wallH) continue;
+            if (type === 'shade') {
+                p.x = Math.random() * _W;
+                p.y = wallH * 0.55 + Math.random() * wallH * 0.40;
+                p.vx = (Math.random() - 0.5) * 0.5;
+                p.vy = -(0.35 + Math.random() * 0.55);
+                p.sz = Math.random() > 0.5 ? 2 : 1;
+                p.maxLife = p.life = 70 + Math.random() * 110;
+            } else {
+                p.x = Math.random() * _W;
+                p.y = Math.random() * wallH * 0.22;
+                p.vx = (Math.random() - 0.5) * 0.35;
+                p.vy = 0.25 + Math.random() * 0.40;
+                p.sz = Math.random() > 0.6 ? 2 : 1;
+                p.maxLife = p.life = 90 + Math.random() * 140;
+            }
+        }
+    }
+
+    function _drawParticles(type) {
+        _ctx.save();
+        const col = type === 'shade' ? '#1a0840' : '#b05820';
+        const baseAlpha = type === 'shade' ? 0.45 : 0.55;
+        for (const p of _pPool) {
+            if (p.life <= 0) continue;
+            const fade = Math.min(1, p.life / 18) * Math.min(1, (p.maxLife - p.life) / 18);
+            _ctx.globalAlpha = fade * baseAlpha;
+            _ctx.fillStyle = col;
+            _ctx.fillRect(Math.round(p.x), Math.round(p.y), p.sz, p.sz);
+        }
+        _ctx.restore();
+    }
+
+    const _ENEMY_PALETTES = {
+        shade: {
+            outerEdge:'#12043a', outerMid:'#1a0840', outerCore:'#200a50',
+            body:'#250c55', hood:'#0a0220', tendrils:'#0d0220',
+            eyeGlow:'#ff0010', eyeCore:'#ff1020', eyeSpec:'#ff9090',
+        },
+        lurker: {
+            roots:'#150804',
+            rearMass:'#1e0e08', midMass:'#2e1610', frontMass:'#4a2818',
+            plateDark:'#6a3c20', plateLight:'#8a5030',
+            eyeGlow:'#ff8010', eyeCore:'#ff8010', eyeSpec:'#ffdd80',
+        },
+    };
+
     function isActive() { return battle.active; }
 
     function getPlayerAtk() {
@@ -58,6 +178,8 @@ const battleSystem = (() => {
         battle.shakeTimer    = 0;
         battle.message       = `A wild ${enemy.name} appeared!`;
         window.showNotification(`A ${enemy.name} appears!`, 'danger');
+        _bgCache = null;       // force bg cache rebuild for new enemy type
+        _resetParticles();
     }
 
     function handleInput(key) {
@@ -284,7 +406,7 @@ const battleSystem = (() => {
     }
 
     // ── Rendering ───────────────────────────────────────────
-    // ctx passed per-frame; W, H, t read from Game.* (set by resizeCanvas / game loop).
+    // ctx passed per-frame; _W, _H, _t read from Game.* (set by resizeCanvas / game loop).
     function render(ctx) {
         if (!battle.active) return;
         _ctx = ctx; _W = Game.cW; _H = Game.cH; _t = Game.timeMs / 1000;
@@ -292,30 +414,52 @@ const battleSystem = (() => {
 
         const shakeAmt = battle.shakeTimer > 0 ? Math.sin(battle.shakeTimer * 0.08) * 5 : 0;
 
-        // Background
-        ctx.fillStyle = '#080308'; ctx.fillRect(0, 0, W, H);
-        const wallH = H * 0.52;
-        ctx.fillStyle = '#120a10'; ctx.fillRect(0, 0, W, wallH);
-        ctx.fillStyle = '#1e1018'; ctx.fillRect(0, wallH, W, H - wallH);
-        ctx.fillStyle = '#2a1622'; ctx.fillRect(0, wallH, W, 3);
-        ctx.fillStyle = '#0e080c';
-        for (let i = 0; i < 7; i++) {
-            const sx2 = W * 0.08 + i * W * 0.13;
-            const sh  = H * (0.06 + (i % 3) * 0.04);
-            ctx.beginPath(); ctx.moveTo(sx2 - W*.022, 0); ctx.lineTo(sx2 + W*.022, 0); ctx.lineTo(sx2, sh); ctx.closePath(); ctx.fill();
+        const wallH = _H * 0.52;
+        const BP = _BG_PALETTES[en.type] || _BG_PALETTES.shade;
+
+        // Layer 1: static cache (far wall + rock texture + stalactites)
+        const bgKey = `${_W}x${_H}x${en.type}`;
+        if (!_bgCache || _bgCacheKey !== bgKey) _buildBgCache(en.type, _W, _H);
+        ctx.drawImage(_bgCache, 0, 0);
+
+        // Layer 2: ground plane — uneven floor edge at wallH
+        ctx.fillStyle = BP.ground;
+        ctx.fillRect(0, wallH, _W, _H - wallH);
+        const floorBumps = [0.10, 0.28, 0.45, 0.62, 0.79, 0.94];
+        ctx.fillStyle = 'rgba(255,255,255,0.04)';
+        for (const bx of floorBumps) {
+            ctx.fillRect(Math.round(bx * _W), wallH - 1, Math.round(_W * 0.12), 2);
         }
-        ctx.strokeStyle = '#3a1a30'; ctx.lineWidth = 1;
-        for (let y2 = wallH + 10; y2 < H; y2 += 20) {
-            ctx.beginPath(); ctx.moveTo(0, y2); ctx.lineTo(W, y2); ctx.stroke();
-        }
+        ctx.fillStyle = BP.divider; ctx.fillRect(0, wallH, _W, 2);
+
+        // Layer 3: torch glow halos — flickering radial gradients on side walls
+        const flicker = 0.07 + Math.sin(_t * Math.PI * 1.2) * 0.03;
+        const torchL = ctx.createRadialGradient(0, wallH * 0.55, 0, 0, wallH * 0.55, _W * 0.22);
+        torchL.addColorStop(0, `${BP.torch}${flicker})`);
+        torchL.addColorStop(1, `${BP.torch}0)`);
+        ctx.fillStyle = torchL; ctx.fillRect(0, 0, _W * 0.22, wallH);
+
+        const torchR = ctx.createRadialGradient(_W, wallH * 0.45, 0, _W, wallH * 0.45, _W * 0.16);
+        torchR.addColorStop(0, `${BP.torch}${flicker * 0.6})`);
+        torchR.addColorStop(1, `${BP.torch}0)`);
+        ctx.fillStyle = torchR; ctx.fillRect(_W * 0.84, 0, _W * 0.16, wallH);
+
+        // Layer 4: atmospheric ground haze
+        const hazeGrd = ctx.createLinearGradient(0, wallH - _H * 0.04, 0, wallH + _H * 0.06);
+        hazeGrd.addColorStop(0, 'rgba(0,0,0,0)');
+        hazeGrd.addColorStop(0.5, 'rgba(0,0,0,0.22)');
+        hazeGrd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = hazeGrd; ctx.fillRect(0, wallH - _H * 0.04, _W, _H * 0.10);
 
         // Enemy HP card (top-left)
         const emaxhp = Game.ENEMY_DEFS[en.type].hp;
-        drawBattleCard(W * 0.04, H * 0.04, W * 0.38, 56, en.name, `Lv ${en.type === 'lurker' ? 8 : 3}`, en.hp, emaxhp, false);
+        drawBattleCard(_W * 0.04, _H * 0.04, _W * 0.38, 56, en.name, `Lv ${en.type === 'lurker' ? 8 : 3}`, en.hp, emaxhp, false);
 
-        // Enemy sprite (top-right)
-        const ESZ = Math.min(W * 0.28, H * 0.40);
-        const ESX = W * 0.56, ESY = H * 0.03;
+        // Enemy sprite (top-right) — per-enemy sizing: Shade smaller/tall, Lurker larger/wide
+        const ESZ = Math.min(_W * 0.28, _H * 0.40);
+        const enemyCenterX = _W * 0.70;
+        const _esz = en.type === 'shade' ? ESZ * 0.80 : ESZ * 1.05;
+        const ESX = enemyCenterX - _esz / 2, ESY = _H * 0.03;
         if (en.alive || battle.phase === 'victory') {
             ctx.save();
             if (battle.phase === 'player_result' && battle.hitDmg > 0) {
@@ -323,46 +467,50 @@ const battleSystem = (() => {
                 const flashAlpha = frac < 0.3 ? frac / 0.3 : frac < 0.6 ? 1 : (1 - frac) / 0.4;
                 ctx.globalAlpha = Math.max(0.3, 1 - flashAlpha * 0.5);
             }
-            drawBattleSprite(ESX, ESY, ESZ, en.type);
+            drawBattleSprite(ESX, ESY, _esz, en.type);
             ctx.restore();
         }
 
         // Player HP card + sprite (bottom-left, with shake)
         const playerShakeX = shakeAmt;
         ctx.save(); ctx.translate(playerShakeX, 0);
-        drawBattleCard(W * 0.04, wallH + H * 0.04, W * 0.40, 56, Game.gs.charName, `Lv ${Game.gs.level}`, Game.gs.hp, Game.gs.maxHp, true);
-        const PSZ = Math.min(W * 0.18, H * 0.28);
-        const PSX = W * 0.12, PSY = wallH - PSZ * 1.0;
+        drawBattleCard(_W * 0.04, wallH + _H * 0.04, _W * 0.40, 56, Game.gs.charName, `Lv ${Game.gs.level}`, Game.gs.hp, Game.gs.maxHp, true);
+        const PSZ = 2 * Game.TS;
+        const PSX = _W * 0.12, PSY = wallH - PSZ;
         drawBattlePlayerSprite(PSX, PSY, PSZ);
         ctx.restore();
 
+        // Ambient particles — arena zone only (y < wallH)
+        _tickParticles(en.type, wallH);
+        _drawParticles(en.type);
+
         // Bottom UI layout
-        const uiTop = wallH + H * 0.01;
-        const uiH   = H - uiTop;
-        const msgW  = W * 0.48, menuW = W * 0.44;
-        const msgX  = W * 0.04, menuX = W * 0.52;
+        const uiTop = wallH + _H * 0.01;
+        const uiH   = _H - uiTop;
+        const msgW  = _W * 0.48, menuW = _W * 0.44;
+        const msgX  = _W * 0.04, menuX = _W * 0.52;
         const boxH  = uiH * 0.86;
         const boxY  = uiTop + uiH * 0.08;
 
         // Full-width box for victory/defeat
         if (battle.phase === 'victory' || battle.phase === 'defeat') {
-            drawDialogueBox(W * 0.04, boxY, W * 0.92, boxH);
-            ctx.font = `bold ${Math.floor(H * 0.09)}px 'Cinzel', serif`;
+            drawDialogueBox(_W * 0.04, boxY, _W * 0.92, boxH);
+            ctx.font = `bold ${Math.floor(_H * 0.09)}px 'Cinzel', serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             if (battle.phase === 'victory') {
                 ctx.fillStyle = '#ffd040'; ctx.shadowColor = '#ffa000'; ctx.shadowBlur = 24;
-                ctx.fillText('VICTORY!', W / 2, boxY + boxH * 0.38);
-                ctx.shadowBlur = 0; ctx.font = `${Math.floor(H * 0.042)}px sans-serif`;
+                ctx.fillText('VICTORY!', _W / 2, boxY + boxH * 0.38);
+                ctx.shadowBlur = 0; ctx.font = `${Math.floor(_H * 0.042)}px sans-serif`;
                 ctx.fillStyle = '#c8e890';
-                ctx.fillText(`${en.name} was defeated!`, W / 2, boxY + boxH * 0.62);
-                ctx.font = `${Math.floor(H * 0.036)}px sans-serif`; ctx.fillStyle = '#c8922a';
-                ctx.fillText(`+${Game.ENEMY_DEFS[en.type].xp} XP`, W / 2, boxY + boxH * 0.80);
+                ctx.fillText(`${en.name} was defeated!`, _W / 2, boxY + boxH * 0.62);
+                ctx.font = `${Math.floor(_H * 0.036)}px sans-serif`; ctx.fillStyle = '#c8922a';
+                ctx.fillText(`+${Game.ENEMY_DEFS[en.type].xp} XP`, _W / 2, boxY + boxH * 0.80);
             } else {
                 ctx.fillStyle = '#ff3030'; ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 24;
-                ctx.fillText('DEFEATED', W / 2, boxY + boxH * 0.38);
-                ctx.shadowBlur = 0; ctx.font = `${Math.floor(H * 0.038)}px sans-serif`;
+                ctx.fillText('DEFEATED', _W / 2, boxY + boxH * 0.38);
+                ctx.shadowBlur = 0; ctx.font = `${Math.floor(_H * 0.038)}px sans-serif`;
                 ctx.fillStyle = '#c0a0b0';
-                ctx.fillText('Returning to Eldoria\u2026', W / 2, boxY + boxH * 0.68);
+                ctx.fillText('Returning to Eldoria\u2026', _W / 2, boxY + boxH * 0.68);
             }
             ctx.shadowBlur = 0; ctx.textBaseline = 'alphabetic';
             return;
@@ -370,19 +518,19 @@ const battleSystem = (() => {
 
         // Left: message box
         drawDialogueBox(msgX, boxY, msgW, boxH);
-        ctx.font = `${Math.floor(H * 0.038)}px 'IM Fell English', serif`;
+        ctx.font = `${Math.floor(_H * 0.038)}px 'IM Fell English', serif`;
         ctx.textAlign = 'left'; ctx.textBaseline = 'top';
         ctx.fillStyle = '#e8d8c0';
-        wrapTextInBox(battle.message, msgX + 18, boxY + 16, msgW - 36, Math.floor(H * 0.038), Math.floor(H * 0.046));
+        wrapTextInBox(battle.message, msgX + 18, boxY + 16, msgW - 36, Math.floor(_H * 0.038), Math.floor(_H * 0.046));
 
         // Damage pop-up on enemy
         if (battle.phase === 'player_result' && battle.hitDmg > 0) {
             const colors = { 'CRITICAL!':'#ffd040', 'HIT!':'#90ff90', 'WEAK!':'#ff9040', 'MISS!':'#909090' };
             const col = colors[battle.hitResult] || '#fff';
             const pop = 1 - battle.timer / 1050;
-            const py = ESY + ESZ * 0.3 - pop * H * 0.12;
+            const py = ESY + ESZ * 0.3 - pop * _H * 0.12;
             ctx.save(); ctx.globalAlpha = Math.min(1, (1 - pop) * 3);
-            ctx.font = `bold ${Math.floor(H * 0.065)}px 'Cinzel', serif`;
+            ctx.font = `bold ${Math.floor(_H * 0.065)}px 'Cinzel', serif`;
             ctx.textAlign = 'center'; ctx.fillStyle = col;
             ctx.shadowColor = col; ctx.shadowBlur = 18;
             ctx.fillText(battle.hitDmg > 0 ? `-${battle.hitDmg}` : 'MISS', ESX + ESZ / 2, py);
@@ -392,19 +540,19 @@ const battleSystem = (() => {
         // Damage pop-up on player
         if (battle.phase === 'enemy_result') {
             const pop  = 1 - battle.timer / 1100;
-            const py   = PSY + PSZ * 0.1 - pop * H * 0.10;
+            const py   = PSY + PSZ * 0.1 - pop * _H * 0.10;
             const miss = battle.enemyHitType === 'miss';
             const crit = battle.enemyHitType === 'crit';
             ctx.save(); ctx.globalAlpha = Math.min(1, (1 - pop) * 3);
-            ctx.font        = `bold ${Math.floor(H * 0.060)}px 'Cinzel', serif`;
+            ctx.font        = `bold ${Math.floor(_H * 0.060)}px 'Cinzel', serif`;
             ctx.textAlign   = 'center';
             ctx.fillStyle   = miss ? '#909090' : crit ? '#ffd040' : '#ff5050';
             ctx.shadowColor = miss ? '#606060' : crit ? '#ffa000' : '#ff0000';
             ctx.shadowBlur  = 16;
             ctx.fillText(miss ? 'MISS' : `-${battle.playerDmgTaken}`, PSX + PSZ / 2 + playerShakeX, py);
             if (crit) {
-                ctx.font = `bold ${Math.floor(H * 0.034)}px 'Cinzel', serif`;
-                ctx.fillText('CRIT!', PSX + PSZ / 2 + playerShakeX, py - H * 0.055);
+                ctx.font = `bold ${Math.floor(_H * 0.034)}px 'Cinzel', serif`;
+                ctx.fillText('CRIT!', PSX + PSZ / 2 + playerShakeX, py - _H * 0.055);
             }
             ctx.shadowBlur = 0; ctx.restore();
         }
@@ -418,7 +566,7 @@ const battleSystem = (() => {
         } else if (battle.phase === 'player_timing') {
             drawTimingBarInBox(menuX, boxY, menuW, boxH, en);
         } else {
-            ctx.font = `${Math.floor(H * 0.042)}px sans-serif`;
+            ctx.font = `${Math.floor(_H * 0.042)}px sans-serif`;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillStyle = '#6a5040';
             const dots = '.'.repeat(1 + Math.floor((_t * 2) % 3));
@@ -614,34 +762,79 @@ const battleSystem = (() => {
         const cx = sx + sz / 2, cy = sy + sz * 0.5;
         _ctx.save();
         if (type === 'shade') {
-            const fl = Math.sin(_t * 2.4) * sz * 0.04;
-            _ctx.fillStyle = '#0a021a';
-            _ctx.beginPath(); _ctx.arc(cx, cy + fl, sz * .42, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#150535';
-            _ctx.beginPath(); _ctx.arc(cx - sz*.18, cy - sz*.12 + fl, sz*.36, 0, Math.PI*2); _ctx.fill();
-            _ctx.beginPath(); _ctx.arc(cx + sz*.18, cy + sz*.04 + fl, sz*.34, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#220a50';
-            _ctx.beginPath(); _ctx.arc(cx, cy - sz*.06 + fl, sz*.30, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#0d0220';
+            const P = _ENEMY_PALETTES.shade;
+            const fl = Math.sin(_t * 1.8) * sz * 0.04;
+            const eyePulse = 0.65 + 0.35 * Math.sin(_t * 2.5);
+
+            // Outer dissolve layers — tall narrow ellipses fading at edges
+            _ctx.globalAlpha = 0.15; _ctx.fillStyle = P.outerEdge;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.08 + fl, sz*.28, sz*.44, 0, 0, Math.PI*2); _ctx.fill();
+            _ctx.globalAlpha = 0.38; _ctx.fillStyle = P.outerMid;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.08 + fl, sz*.22, sz*.38, 0, 0, Math.PI*2); _ctx.fill();
+            _ctx.globalAlpha = 0.68; _ctx.fillStyle = P.outerCore;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.08 + fl, sz*.16, sz*.30, 0, 0, Math.PI*2); _ctx.fill();
+            _ctx.globalAlpha = 1;
+
+            // Solid core body — narrow column
+            _ctx.fillStyle = P.body;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.08 + fl, sz*.11, sz*.22, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Hood mass — dark crown suggesting a hooded form
+            _ctx.fillStyle = P.hood;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.34 + fl, sz*.14, sz*.16, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Wispy tendrils — 4 tapered wisps with individual horizontal drift + length variation
             for (let i = 0; i < 4; i++) {
-                const tx2 = cx + (i - 1.5) * sz * .18;
-                const th = sz * (0.18 + Math.sin(_t * 1.8 + i) * 0.06);
-                _ctx.beginPath(); _ctx.ellipse(tx2, cy + sz*.3 + th/2, sz*.045, th/2, 0, 0, Math.PI*2); _ctx.fill();
+                const tx = cx + (i - 1.5) * sz * .14;
+                const tlen = sz * (0.20 + Math.sin(_t * 1.3 + i * 1.4) * 0.06);
+                const tdrift = Math.sin(_t * 1.6 + i) * sz * .04;
+                _ctx.globalAlpha = 0.55 + (i % 2) * 0.12;
+                _ctx.fillStyle = P.tendrils;
+                _ctx.beginPath(); _ctx.ellipse(tx + tdrift, cy + sz*.18 + tlen * .5 + fl, sz*.032, tlen * .5, 0, 0, Math.PI*2); _ctx.fill();
             }
-            _ctx.shadowColor = '#ff0010'; _ctx.shadowBlur = sz * .12;
-            _ctx.fillStyle = '#ff1020';
-            _ctx.beginPath(); _ctx.arc(cx - sz*.10, cy - sz*.06 + fl, sz*.07, 0, Math.PI*2); _ctx.fill();
-            _ctx.beginPath(); _ctx.arc(cx + sz*.10, cy - sz*.06 + fl, sz*.07, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#ff9090'; _ctx.shadowBlur = 0;
-            _ctx.beginPath(); _ctx.arc(cx - sz*.10, cy - sz*.06 + fl, sz*.025, 0, Math.PI*2); _ctx.fill();
-            _ctx.beginPath(); _ctx.arc(cx + sz*.10, cy - sz*.06 + fl, sz*.025, 0, Math.PI*2); _ctx.fill();
+            _ctx.globalAlpha = 1;
+
+            // Pulsing red eyes
+            _ctx.shadowColor = P.eyeGlow; _ctx.shadowBlur = sz * .18 * eyePulse;
+            _ctx.fillStyle = P.eyeCore;
+            const er = sz * (.058 + .010 * eyePulse);
+            _ctx.beginPath(); _ctx.arc(cx - sz*.085, cy - sz*.10 + fl, er, 0, Math.PI*2); _ctx.fill();
+            _ctx.beginPath(); _ctx.arc(cx + sz*.085, cy - sz*.10 + fl, er, 0, Math.PI*2); _ctx.fill();
+            _ctx.fillStyle = P.eyeSpec; _ctx.shadowBlur = 0;
+            _ctx.beginPath(); _ctx.arc(cx - sz*.085, cy - sz*.10 + fl, sz*.020, 0, Math.PI*2); _ctx.fill();
+            _ctx.beginPath(); _ctx.arc(cx + sz*.085, cy - sz*.10 + fl, sz*.020, 0, Math.PI*2); _ctx.fill();
+
         } else {
-            _ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            _ctx.beginPath(); _ctx.ellipse(cx, cy + sz*.50, sz*.50, sz*.10, 0, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#1e0e08';
-            _ctx.beginPath(); _ctx.ellipse(cx, cy, sz*.45, sz*.40, 0, 0, Math.PI*2); _ctx.fill();
-            _ctx.fillStyle = '#4a2818';
-            _ctx.beginPath(); _ctx.ellipse(cx, cy - sz*.03, sz*.40, sz*.35, 0, 0, Math.PI*2); _ctx.fill();
+            const P = _ENEMY_PALETTES.lurker;
+            const breathe = 1 + Math.sin(_t * 0.75) * 0.025;
+            const eyePulse = 0.60 + 0.40 * Math.sin(_t * 1.0);
+
+            // Ground shadow — scales with breathing
+            _ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            _ctx.beginPath(); _ctx.ellipse(cx, cy + sz*.50, sz*.54 * breathe, sz*.09, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Heavy root tendrils — 5 thick dragging shapes with lazy lateral drift
+            _ctx.fillStyle = P.roots;
+            for (let i = 0; i < 5; i++) {
+                const rx = cx + (i - 2) * sz * .22;
+                const rdrift = Math.sin(_t * 0.55 + i * 1.9) * sz * .035;
+                const rlen = sz * (.26 + (i % 2) * .06);
+                _ctx.beginPath(); _ctx.ellipse(rx + rdrift, cy + sz*.28 + rlen * .5, sz*.068, rlen * .5, 0, 0, Math.PI*2); _ctx.fill();
+            }
+
+            // Rear mass — largest, darkest, widest
+            _ctx.fillStyle = P.rearMass;
+            _ctx.beginPath(); _ctx.ellipse(cx, cy, sz*.46 * breathe, sz*.39 * breathe, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Mid mass — medium, offset slightly left
+            _ctx.fillStyle = P.midMass;
+            _ctx.beginPath(); _ctx.ellipse(cx - sz*.10, cy - sz*.04, sz*.36 * breathe, sz*.32 * breathe, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Front mass — lightest, foreground lobe
+            _ctx.fillStyle = P.frontMass;
+            _ctx.beginPath(); _ctx.ellipse(cx + sz*.08, cy - sz*.02, sz*.30 * breathe, sz*.28 * breathe, 0, 0, Math.PI*2); _ctx.fill();
+
+            // Rocky armor plates
             const plates = [
                 {ox:-0.22, oy:-0.18, w:.22, h:.17},
                 {ox: 0.05, oy:-0.26, w:.26, h:.15},
@@ -650,59 +843,64 @@ const battleSystem = (() => {
                 {ox: 0.10, oy: 0.15, w:.18, h:.14},
             ];
             for (const pl of plates) {
-                _ctx.fillStyle = '#6a3c20';
+                _ctx.fillStyle = P.plateDark;
                 _ctx.beginPath(); _ctx.ellipse(cx + pl.ox*sz, cy + pl.oy*sz, pl.w*sz, pl.h*sz, 0, 0, Math.PI*2); _ctx.fill();
-                _ctx.fillStyle = '#8a5030';
+                _ctx.fillStyle = P.plateLight;
                 _ctx.beginPath(); _ctx.ellipse(cx + pl.ox*sz - sz*.01, cy + pl.oy*sz - sz*.015, pl.w*sz*.65, pl.h*sz*.55, 0, 0, Math.PI*2); _ctx.fill();
             }
-            _ctx.shadowColor = '#ff8010'; _ctx.shadowBlur = sz * .10;
-            _ctx.fillStyle = '#ff8010';
-            const eyeY = cy - sz * .07;
-            for (let i = -1; i <= 1; i++) {
-                _ctx.beginPath(); _ctx.arc(cx + i*sz*.18, eyeY, sz*.065, 0, Math.PI*2); _ctx.fill();
+
+            // Eye radial glow halos
+            const eyeY = cy - sz * .08;
+            const eyePos = [-0.18, 0, 0.18];
+            for (const ep of eyePos) {
+                const ex = cx + ep * sz;
+                const grad = _ctx.createRadialGradient(ex, eyeY, 0, ex, eyeY, sz * .14);
+                grad.addColorStop(0, `rgba(255,128,0,${0.50 * eyePulse})`);
+                grad.addColorStop(1, 'rgba(255,80,0,0)');
+                _ctx.fillStyle = grad;
+                _ctx.beginPath(); _ctx.arc(ex, eyeY, sz * .14, 0, Math.PI*2); _ctx.fill();
             }
-            _ctx.fillStyle = '#ffdd80'; _ctx.shadowBlur = 0;
-            for (let i = -1; i <= 1; i++) {
-                _ctx.beginPath(); _ctx.arc(cx + i*sz*.18, eyeY, sz*.022, 0, Math.PI*2); _ctx.fill();
+
+            // Eyes with pulsing glow
+            _ctx.shadowColor = P.eyeGlow; _ctx.shadowBlur = sz * .14 * eyePulse;
+            _ctx.fillStyle = P.eyeCore;
+            for (const ep of eyePos) {
+                _ctx.beginPath(); _ctx.arc(cx + ep*sz, eyeY, sz*.065, 0, Math.PI*2); _ctx.fill();
             }
-            _ctx.fillStyle = '#2a1208';
-            for (let i = -1; i <= 1; i++) {
-                _ctx.beginPath();
-                _ctx.moveTo(cx + i*sz*.20 - sz*.05, cy + sz*.30);
-                _ctx.lineTo(cx + i*sz*.20, cy + sz*.48);
-                _ctx.lineTo(cx + i*sz*.20 + sz*.05, cy + sz*.30);
-                _ctx.fill();
+            _ctx.fillStyle = P.eyeSpec; _ctx.shadowBlur = 0;
+            for (const ep of eyePos) {
+                _ctx.beginPath(); _ctx.arc(cx + ep*sz, eyeY, sz*.022, 0, Math.PI*2); _ctx.fill();
             }
         }
         _ctx.restore();
     }
 
     function drawBattlePlayerSprite(sx, sy, sz) {
-        const cx = sx + sz / 2, cy = sy + sz / 2;
-        const col   = Game.CLASS_COLORS[Game.gs.charClass] || Game.CLASS_COLORS.Warrior;
-        const cloak = Game.CLASS_CLOAK[Game.gs.charClass]  || '#4a2810';
+        const cx = sx + sz / 2;
+        // Shadow
         _ctx.save();
         _ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        _ctx.beginPath(); _ctx.ellipse(cx, cy + sz*.40, sz*.30, sz*.07, 0, 0, Math.PI*2); _ctx.fill();
-        _ctx.fillStyle = cloak;
-        _ctx.beginPath(); _ctx.arc(cx, cy + sz*.05, sz*.38, 0, Math.PI*2); _ctx.fill();
-        _ctx.fillStyle = col;
-        _ctx.beginPath(); _ctx.arc(cx, cy, sz*.32, 0, Math.PI*2); _ctx.fill();
-        _ctx.strokeStyle = 'rgba(0,0,0,0.4)'; _ctx.lineWidth = 2; _ctx.stroke();
-        _ctx.fillStyle = '#e8cfa0';
-        _ctx.beginPath(); _ctx.arc(cx, cy - sz*.28, sz*.17, 0, Math.PI*2); _ctx.fill();
-        _ctx.strokeStyle = 'rgba(0,0,0,0.25)'; _ctx.lineWidth = 1; _ctx.stroke();
-        _ctx.fillStyle = cloak;
-        _ctx.beginPath(); _ctx.arc(cx, cy - sz*.32, sz*.16, Math.PI, Math.PI*2); _ctx.fill();
+        _ctx.beginPath();
+        _ctx.ellipse(cx, sy + sz + sz * 0.06, sz * 0.30, sz * 0.07, 0, 0, Math.PI * 2);
+        _ctx.fill();
+        _ctx.restore();
+
+        // Pixel-art humanoid sprite — same cache/palette system as overworld
+        const frameIdx = 4 + (Math.floor(Game.timeMs / 166) % 2);
+        const frame = window.Render.buildCharFrame(Game.gs.charClass || 'Warrior', 'right', frameIdx);
+        _ctx.drawImage(frame, sx, sy, sz, sz);
+
+        // Weapon overlay
         const hasWep = Game.gs.inventory.some(i => i.questComplete === 'quest_weapon_complete');
         if (hasWep) {
+            const cy = sy + sz / 2, r = sz * 0.28;
+            _ctx.save();
             _ctx.fillStyle = '#a0a8d0'; _ctx.strokeStyle = '#606080'; _ctx.lineWidth = 2;
-            _ctx.save(); _ctx.translate(cx + sz*.25, cy - sz*.12); _ctx.rotate(-0.3);
-            _ctx.fillRect(-sz*.04, -sz*.30, sz*.07, sz*.42);
-            _ctx.fillStyle = '#6a3010'; _ctx.fillRect(-sz*.06, sz*.05, sz*.11, sz*.08);
+            _ctx.translate(cx + r * 0.9, cy - r * 0.4); _ctx.rotate(-0.3);
+            _ctx.fillRect(-sz * .04, -sz * .30, sz * .07, sz * .42);
+            _ctx.fillStyle = '#6a3010'; _ctx.fillRect(-sz * .06, sz * .05, sz * .11, sz * .08);
             _ctx.restore();
         }
-        _ctx.restore();
     }
 
     return { start, handleInput, update, render, isActive };

@@ -15,7 +15,8 @@ let _bgCamX  = -1, _bgCamY = -1; // last cam position baked into bgCanvas
 function markBgDirty()               { bgDirty = true; }
 function invalidateLightCanvas()     { lightCanvas = null; }
 function invalidateScanlinesCanvas() { _scanlinesCanvas = null; }
-function invalidateCharCache()  { _charCache.clear();  _charCacheTS  = 0; }
+function invalidateCharCache()  { _charCache.clear(); }
+function invalidateNPCCache()   { _npcCache.clear(); }
 function invalidateEnemyCache() { _enemyCache.clear(); _enemyCacheTS = 0; }
 function invalidateChestCache() { _chestCache.clear(); _chestCacheTS = 0; }
 
@@ -1501,37 +1502,161 @@ const _EYE_POS   = Object.freeze({
     right: Object.freeze([{x:.18, y:-.08},{x:.05, y:.10}]),
 });
 
-// ── Pixel art player sprite cache ─────────────────────────────────────
-// Keyed by "color|facing|frameIdx". Rebuilt automatically when TS changes.
-const _charCache = new Map();
-let   _charCacheTS = 0;
+// ── Humanoid character palette — one entry per class ──────────────────
+// See docs/SPRITE_STYLE_GUIDE.md for the full style spec.
+// Light source: top-left.  Outline: 1px dark on silhouette edges.
+const _CHAR_PALETTES = Object.freeze({
+    Warrior: { armor:'#c07818', armorHi:'#d89030', armorSh:'#8a5010',
+                cloak:'#1a0c04', cloakEdge:'#2e1a0a',
+                collar:'#8a2020', legs:'#3a2818', boots:'#1e1208',
+                helmet:'#788898', helmetHi:'#a0b8c8' },
+    Rogue:   { armor:'#6020a8', armorHi:'#8030c8', armorSh:'#3a1068',
+                cloak:'#0c0c1e', cloakEdge:'#1a1830',
+                collar:'#3a1060', legs:'#18121e', boots:'#0c0810',
+                helmet:'#3a1870', helmetHi:'#5a2890' },
+    Wizard:  { armor:'#4a6878', armorHi:'#6a8898', armorSh:'#2a4858',
+                cloak:'#0c0c1e', cloakEdge:'#1a1830',
+                collar:'#1a3050', legs:'#1a2838', boots:'#0c1018',
+                helmet:'#3a5870', helmetHi:'#5a78a0' },
+    Cleric:  { armor:'#c09010', armorHi:'#d8a830', armorSh:'#8a6808',
+                cloak:'#141210', cloakEdge:'#201e18',
+                collar:'#d4a020', legs:'#2a2218', boots:'#1a1408',
+                helmet:'#b8920e', helmetHi:'#e0c040' },
+});
+// Shared skin / hair / outline / eye constants — same for all classes.
+const _CHAR_SKIN    = '#c8a882';
+const _CHAR_SKIN_HI = '#ddc09a';
+const _CHAR_SKIN_SH = '#a07858';
+const _CHAR_HAIR    = '#2a1a0a';
+const _CHAR_HAIR_HI = '#3d2a10';   // hair band top-row highlight (all humanoids)
+const _CHAR_OUTLINE = '#1a1208';
+const _CHAR_EYE_W   = '#e8e0d0';
+const _CHAR_EYE_D   = '#281808';
 
-function _buildCharFrame(color, facing, frameIdx) {
-    if (_charCacheTS !== TS) { _charCache.clear(); _charCacheTS = TS; }
-    const key = `${color}|${facing}|${frameIdx}`;
+// NPC-specific skin and hair overrides
+const _CHAR_SKIN_PALE      = '#d4b890';   // Elder Maren
+const _CHAR_SKIN_PALE_HI   = '#e8cca8';
+const _CHAR_SKIN_PALE_SH   = '#a88860';
+const _CHAR_SKIN_TAN       = '#b07848';   // Daran forge-tan
+const _CHAR_SKIN_TAN_HI    = '#c89060';
+const _CHAR_SKIN_TAN_SH    = '#886038';
+const _CHAR_SKIN_ELF       = '#d4c8a0';   // Veyla elfin
+const _CHAR_SKIN_ELF_HI    = '#e8dcb8';
+const _CHAR_SKIN_ELF_SH    = '#b0a878';
+const _CHAR_SKIN_GHOST     = '#b0c8e0';   // Mira ghost-blue
+const _CHAR_SKIN_GHOST_HI  = '#c8dff0';
+const _CHAR_SKIN_GHOST_SH  = '#8098b0';
+const _CHAR_HAIR_SILVER      = '#c8c8c0'; // Elder Maren
+const _CHAR_HAIR_SILVER_BLUE = '#b8b8c0'; // Veyla
+const _CHAR_HAIR_GHOST       = '#8090c0'; // Mira
+
+// ── NPC character configs — one entry per npc.id ─────────────────────
+const _NPC_CONFIGS = Object.freeze({
+    guide: {
+        skin: '#c8a882', skinHi: '#ddc09a', skinSh: '#a07858',
+        hair: '#2a1a0a',
+        palette: { armor:'#3a7830', armorHi:'#4a9840', armorSh:'#285820',
+                   cloak:'#1a2010', cloakEdge:'#283018', cloakLining:'#283820', cloakFold:'#141a10',
+                   collar:'#c09010', belt:'#6a4010', buckle:'#c09010',
+                   legs:'#2a3018', boots:'#1a1208', bootSole:_CHAR_OUTLINE,
+                   helmet:'#3a7830', helmetHi:'#4a9840' },
+        bareHead: true,  elfEars: false, widthMul: 1.00, accessory: 'satchel',
+    },
+    elder: {
+        skin: '#d4b890', skinHi: '#e8cca8', skinSh: '#a88860',
+        hair: '#c8c8c0',
+        palette: { armor:'#6a7890', armorHi:'#8898b0', armorSh:'#4a5870',
+                   cloak:'#141820', cloakEdge:'#202838', cloakLining:'#202848', cloakFold:'#0c1020',
+                   collar:'#c09010', belt:'#4a5870', buckle:'#8898b0',
+                   legs:'#282838', boots:'#141418', bootSole:_CHAR_OUTLINE,
+                   helmet:'#c0c0b8', helmetHi:'#d8d8d0' },
+        bareHead: false, elfEars: false, widthMul: 0.90, accessory: 'staff',
+    },
+    blacksmith: {
+        skin: '#b07848', skinHi: '#c89060', skinSh: '#886038',
+        hair: '#2a1a0a',
+        palette: { armor:'#4a3018', armorHi:'#6a4828', armorSh:'#302010',
+                   cloak:'#1a100a', cloakEdge:'#281808', cloakLining:'#221410', cloakFold:'#100a06',
+                   collar:'#883010', belt:'#6a2010', buckle:'#909090',
+                   legs:'#302018', boots:'#1a1008', bootSole:_CHAR_OUTLINE,
+                   helmet:'#4a3018', helmetHi:'#6a4828' },
+        bareHead: true,  elfEars: false, widthMul: 1.15, accessory: 'hammer',
+    },
+    traveler: {
+        skin: '#d4c8a0', skinHi: '#e8dcb8', skinSh: '#b0a878',
+        hair: '#b8b8c0',
+        palette: { armor:'#2848a0', armorHi:'#3860c0', armorSh:'#183080',
+                   cloak:'#101828', cloakEdge:'#182030', cloakLining:'#203050', cloakFold:'#080c18',
+                   collar:'#5878c8', belt:'#3860c8', buckle:'#d0b040',
+                   legs:'#182050', boots:'#101828', bootSole:_CHAR_OUTLINE,
+                   helmet:'#a0b0d0', helmetHi:'#d0e0f0' },
+        bareHead: false, elfEars: true,  widthMul: 1.00, accessory: 'scroll',
+    },
+    ghost: {
+        skin: '#b0c8e0', skinHi: '#c8dff0', skinSh: '#8098b0',
+        hair: '#8090c0',
+        palette: { armor:'#404888', armorHi:'#5060a8', armorSh:'#282e68',
+                   cloak:'#101828', cloakEdge:'#182038', cloakLining:'#182040', cloakFold:'#0c1028',
+                   collar:'#5868a8', belt:'#303868', buckle:'#5060a8',
+                   legs:'#181828', boots:'#101018', bootSole:_CHAR_OUTLINE,
+                   helmet:'#404888', helmetHi:'#5060a8' },
+        bareHead: false, elfEars: false, widthMul: 1.00, accessory: null,
+    },
+});
+
+// ── Pixel art player sprite cache ─────────────────────────────────────
+// Fixed 64×64 authoring resolution — cache entries are resolution-stable across all TS values.
+// Keyed by "charClass|facing|frameIdx". Invalidated only on class change, not on window resize.
+const PLAYER_SPRITE_SIZE = 64;
+const NPC_SPRITE_SIZE    = 64;
+
+// Accessory material constants — shared across all NPC accessories
+const _NPC_WOOD     = '#7a4818';  // staff/handle
+const _NPC_METAL    = '#808090';  // hammer/metal base
+const _NPC_METAL_HI = '#a0a8d0';  // metal highlight
+const _NPC_METAL_SH  = '#606080';  // metal shadow
+const _NPC_PARCHMENT = '#e8dcc0';  // scroll/paper
+
+const _charCache = new Map();
+
+// ── Pixel art NPC sprite cache ────────────────────────────────────────
+// Fixed 64×64 authoring resolution — cache entries are resolution-stable across all TS values.
+// Keyed by "npcId|facing|frameIdx". Invalidated only on explicit invalidateNPCCache(), not on resize.
+const _npcCache = new Map();
+
+function _buildCharFrame(charClass, facing, frameIdx) {
+    const key = `${charClass}|${facing}|${frameIdx}`;
     if (_charCache.has(key)) { if (Game.DEV) _charCacheHits++; return _charCache.get(key); }
     if (Game.DEV) _charCacheMisses++;
 
+    const P = _CHAR_PALETTES[charClass] || _CHAR_PALETTES.Warrior;
+    const PSZ = PLAYER_SPRITE_SIZE; // 64 — authoring canvas; displayed scaled to TS×TS via drawImage
+
     const off = document.createElement('canvas');
-    off.width = off.height = TS;
+    off.width = off.height = PSZ;
     const c = off.getContext('2d');
     c.imageSmoothingEnabled = false;
 
-    const U   = Math.max(1, Math.floor(TS / 16));
-    const cx  = Math.floor(TS / 2);
-    // Walk frames 0-3: frames 1 and 3 bob 1px; idle frames 4-5: frame 5 bobs
-    const bob = (frameIdx === 1 || frameIdx === 3 || frameIdx === 5) ? -1 : 0;
+    const U   = Math.max(1, Math.floor(PSZ / 16));
+    const cx  = Math.floor(PSZ / 2);
+    // Walk frames 0-3: frames 1 and 3 bob; idle frames 4-5: frame 5 bobs
+    const bob = (frameIdx === 1 || frameIdx === 3 || frameIdx === 5) ? -Math.max(1, Math.floor(PSZ / 32)) : 0;
 
-    const headR  = Math.max(2, Math.floor(TS * 0.145));
-    const headCY = Math.floor(TS * 0.22) + bob;
+    const headR  = Math.max(2, Math.floor(PSZ * 0.145));
+    const headW  = headR * 2;
+    const headH  = headR * 2;
+    const headX  = cx - headR;
+    const headCY = Math.floor(PSZ * 0.22) + bob;
+    const headY  = headCY - headR;
 
-    const bodyW  = Math.floor(TS * 0.44);
-    const bodyH  = Math.floor(TS * 0.32);
+    const bodyW  = Math.floor(PSZ * 0.44);
+    const bodyH  = Math.floor(PSZ * 0.32);
     const bodyX  = cx - Math.floor(bodyW / 2);
-    const bodyY  = Math.floor(TS * 0.40) + bob;
+    const bodyY  = Math.floor(PSZ * 0.40) + bob;
+    const sW     = Math.max(U, Math.floor(PSZ * 0.08));
 
-    const legW   = Math.max(1, Math.floor(TS * 0.12));
-    const legH   = Math.floor(TS * 0.22);
+    const legW    = Math.max(1, Math.floor(PSZ * 0.12));
+    const legH    = Math.floor(PSZ * 0.22);
     const legTopY = bodyY + bodyH - 1;
     const leftLegX  = bodyX + U;
     const rightLegX = bodyX + bodyW - U - legW;
@@ -1539,91 +1664,380 @@ function _buildCharFrame(color, facing, frameIdx) {
     const leftLegDY  = frameIdx === 1 ? -U : frameIdx === 3 ?  U : 0;
     const rightLegDY = frameIdx === 1 ?  U : frameIdx === 3 ? -U : 0;
 
-    // Ground shadow
+    // ── 1. Ground shadow ──────────────────────────────────────────────
     c.globalAlpha = 0.22;
     c.fillStyle = '#000000';
-    c.fillRect(cx - Math.floor(TS*0.20), Math.floor(TS*0.84), Math.floor(TS*0.40), Math.max(1, Math.floor(TS*0.05)));
+    c.fillRect(cx - Math.floor(PSZ*0.20), Math.floor(PSZ*0.84), Math.floor(PSZ*0.40), Math.max(1, Math.floor(PSZ*0.05)));
     c.globalAlpha = 1;
 
-    // Legs (drawn under body)
+    // ── 2. Cloak (behind body — drawn before legs and torso) ──────────
+    // Flares slightly wider than shoulders to give a silhouette fringe.
+    const cloakFlare = Math.max(U*2, Math.floor(PSZ * 0.10));
+    const cloakTopY  = bodyY + Math.floor(bodyH * 0.35);
+    const cloakBotY  = legTopY + legH + U;
+    const cloakX     = bodyX - cloakFlare;
+    const cloakW     = bodyW + cloakFlare * 2;
+    c.fillStyle = P.cloak;
+    c.fillRect(cloakX, cloakTopY, cloakW, cloakBotY - cloakTopY);
+    // 1px slightly lighter edge on each visible cloak side
+    c.fillStyle = P.cloakEdge;
+    c.fillRect(cloakX,              cloakTopY, 1, cloakBotY - cloakTopY);
+    c.fillRect(cloakX + cloakW - 1, cloakTopY, 1, cloakBotY - cloakTopY);
+
+    // ── 3. Legs ───────────────────────────────────────────────────────
     if (facing === 'left' || facing === 'right') {
-        c.fillStyle = '#4a5a6a';
+        c.fillStyle = P.legs;
         c.fillRect(bodyX + U, legTopY, bodyW - U*2, legH);
-        c.fillStyle = '#2a1a0a';
+        c.fillStyle = P.boots;
         c.fillRect(bodyX + U, legTopY + legH - U, bodyW - U*2, U);
     } else {
-        c.fillStyle = '#4a5a6a';
+        c.fillStyle = P.legs;
         c.fillRect(leftLegX,  legTopY + leftLegDY,  legW, legH);
         c.fillRect(rightLegX, legTopY + rightLegDY, legW, legH);
-        c.fillStyle = '#2a1a0a';
+        c.fillStyle = P.boots;
         c.fillRect(leftLegX,  legTopY + leftLegDY  + legH - U, legW, U);
         c.fillRect(rightLegX, legTopY + rightLegDY + legH - U, legW, U);
     }
 
-    // Body
-    c.fillStyle = color || '#8a9aaa';
+    // ── 4. Silhouette outline (drawn before body/head fills) ──────────
+    // Head outline: 4-side dark border
+    c.fillStyle = _CHAR_OUTLINE;
+    c.fillRect(headX,         headY - 1, headW,          1); // top
+    c.fillRect(headX - 1,     headY,     1,               headH); // left
+    c.fillRect(headX + headW, headY,     1,               headH); // right
+    // Body/shoulder left+right sides, feet bottom
+    c.fillRect(bodyX - sW - 1, bodyY,        1, bodyH + legH + 1); // left
+    c.fillRect(bodyX + bodyW + sW, bodyY,    1, bodyH + legH + 1); // right
+    c.fillRect(bodyX - sW - 1, legTopY + legH, bodyW + sW*2 + 2, 1); // feet bottom
+
+    // ── 5. Body + shoulders ───────────────────────────────────────────
+    c.fillStyle = P.armor;
     c.fillRect(bodyX, bodyY, bodyW, bodyH);
-
-    // Shoulders
-    const sW = Math.max(U, Math.floor(TS * 0.08));
-    c.fillStyle = color || '#8a9aaa';
-    c.fillRect(bodyX - sW, bodyY + U,       sW, Math.floor(bodyH * 0.55));
-    c.fillRect(bodyX + bodyW, bodyY + U,    sW, Math.floor(bodyH * 0.55));
-
-    // Accent collar strip
-    c.fillStyle = '#aa3030';
+    // Shoulders (slightly darker — they face sideways, less direct light)
+    c.fillStyle = P.armorSh;
+    c.fillRect(bodyX - sW, bodyY + U,    sW, Math.floor(bodyH * 0.55));
+    c.fillRect(bodyX + bodyW, bodyY + U, sW, Math.floor(bodyH * 0.55));
+    // Collar accent strip
+    c.fillStyle = P.collar;
     c.fillRect(bodyX + U, bodyY + U, bodyW - U*2, U);
+    // Body bevel: top-left bright, bottom-right dark (consistent light source)
+    c.fillStyle = P.armorHi;
+    c.fillRect(bodyX, bodyY, bodyW, 1);     // top highlight
+    c.fillRect(bodyX, bodyY, 1, bodyH);     // left highlight
+    c.fillStyle = P.armorSh;
+    c.fillRect(bodyX, bodyY + bodyH - 1, bodyW, 1); // bottom shadow
+    c.fillRect(bodyX + bodyW - 1, bodyY, 1, bodyH); // right shadow
 
-    // Body bevel: bright top-left edge, dark bottom-right edge
-    c.fillStyle = '#c0ccd8';
-    c.fillRect(bodyX, bodyY, bodyW, 1);
-    c.fillRect(bodyX, bodyY, 1, bodyH);
-    c.fillStyle = '#3a4858';
-    c.fillRect(bodyX, bodyY + bodyH - 1, bodyW, 1);
-    c.fillRect(bodyX + bodyW - 1, bodyY, 1, bodyH);
+    // ── 6. Head fill (pixel-art rounded rect — corners cut by 1px) ───
+    c.fillStyle = _CHAR_SKIN;
+    c.fillRect(headX + 1, headY,     headW - 2, headH); // narrow top/bottom
+    c.fillRect(headX,     headY + 1, headW,     headH - 2); // full-width middle
 
-    // Head: skin circle
-    c.fillStyle = '#c8a882';
-    c.beginPath(); c.arc(cx, headCY, headR, 0, Math.PI * 2); c.fill();
+    // ── 7. Head shading (top-left light source, matching body) ────────
+    c.fillStyle = _CHAR_SKIN_HI;
+    c.fillRect(headX + 1, headY,     headW - 2, 1); // top highlight strip
+    c.fillRect(headX,     headY + 1, 1, headH - 2); // left highlight strip
+    c.fillStyle = _CHAR_SKIN_SH;
+    c.fillRect(headX + 1, headY + headH - 1, headW - 2, 1); // bottom shadow
+    c.fillRect(headX + headW - 1, headY + 1, 1, headH - 2); // right shadow
+
+    // ── 8. Hair and face detail (direction-dependent) ─────────────────
+    const hairH = Math.max(U, Math.floor(headH * 0.42));
+    const sideH = Math.floor(headH * 0.25);
+    const eyeY  = headCY + Math.floor(headH * 0.05);
 
     if (facing === 'up') {
-        // Back of head: hair covers entire head
-        c.fillStyle = '#2a1a0a';
-        c.beginPath(); c.arc(cx, headCY, headR, 0, Math.PI * 2); c.fill();
+        // Back of head — full hair coverage, no face
+        c.fillStyle = _CHAR_HAIR;
+        c.fillRect(headX + 1, headY,     headW - 2, headH);
+        c.fillRect(headX,     headY + 1, headW,     headH - 2);
     } else {
-        // Hair: top arc of head (counterclockwise π → 0 = upper half)
-        c.fillStyle = '#2a1a0a';
-        c.beginPath();
-        c.arc(cx, headCY, headR, Math.PI, 0, true);
-        c.lineTo(cx - headR, headCY);
-        c.fill();
-        // Eyes: direction-dependent
+        // Hair band with top highlight row
+        c.fillStyle = _CHAR_HAIR;
+        c.fillRect(headX + 1, headY,     headW - 2, hairH);
+        c.fillRect(headX,     headY + 1, headW,     hairH - 1);
+        c.fillStyle = _CHAR_HAIR_HI;
+        c.fillRect(headX + 1, headY, headW - 2, 1); // top highlight row
+        // Sideburns
+        c.fillStyle = _CHAR_HAIR;
+        c.fillRect(headX,             headY + hairH, 1, sideH);
+        c.fillRect(headX + headW - 1, headY + hairH, 1, sideH);
+
         if (facing === 'down') {
-            c.fillStyle = '#ffffff';
-            c.fillRect(cx - Math.floor(headR * 0.5), headCY - Math.floor(headR * 0.1), 2, 2);
-            c.fillRect(cx + Math.floor(headR * 0.1), headCY - Math.floor(headR * 0.1), 2, 2);
-            c.fillStyle = '#503820';
-            c.fillRect(cx - 1, headCY + Math.floor(headR * 0.38), 1, 1);
+            // Eyes: hard-coded 2×2 whites, 1×1 pupils — 2px gap between eyes
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx - 4, eyeY, 2, 2); // left white
+            c.fillRect(cx + 2, eyeY, 2, 2); // right white
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx - 3, eyeY + 1, 1, 1); // left pupil
+            c.fillRect(cx + 2, eyeY + 1, 1, 1); // right pupil
+            // Nose dot
+            c.fillStyle = _CHAR_SKIN_SH;
+            c.fillRect(cx, headCY + Math.floor(headH * 0.20), 1, 1);
+            // Mouth hint (2×2)
+            c.fillRect(cx - 1, headCY + Math.floor(headH * 0.35), 2, 2);
         } else if (facing === 'left') {
-            c.fillStyle = '#ffffff';
-            c.fillRect(cx - Math.floor(headR * 0.65), headCY - Math.floor(headR * 0.1), 2, 2);
-        } else {
-            c.fillStyle = '#ffffff';
-            c.fillRect(cx + Math.floor(headR * 0.35), headCY - Math.floor(headR * 0.1), 2, 2);
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx - 6, eyeY, 2, 2);
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx - 6, eyeY + 1, 1, 1); // pupil on inner edge
+        } else { // right
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx + 4, eyeY, 2, 2);
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx + 5, eyeY + 1, 1, 1); // pupil on inner edge
         }
     }
 
-    // Helmet strip across the top of head
-    c.fillStyle = '#7a8a9a';
-    c.fillRect(cx - headR, headCY - headR, headR * 2, Math.max(1, Math.floor(headR * 0.5)));
-    c.fillStyle = '#aabaca';
-    c.fillRect(cx - headR, headCY - headR, headR * 2, 1);
+    // ── 9. Helmet strip (top of head — over hair) ─────────────────────
+    const helmH = Math.max(1, Math.floor(headH * 0.28));
+    c.fillStyle = P.helmet;
+    c.fillRect(headX + 1, headY, headW - 2, helmH); // corner-cut top row
+    c.fillRect(headX,     headY + 1, headW, helmH - 1); // full width below
+    c.fillStyle = P.helmetHi;
+    c.fillRect(headX + 1, headY, headW - 2, 1); // single highlight row at very top
 
     _charCache.set(key, off);
     return off;
 }
 
-function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, walkPhase=0, isMoving=false) {
+function _buildNPCFrame(npcId, facing, frameIdx) {
+    const key = `${npcId}|${facing}|${frameIdx}`;
+    if (_npcCache.has(key)) return _npcCache.get(key);
+
+    const cfg = _NPC_CONFIGS[npcId];
+    if (!cfg) return null;
+    const P   = cfg.palette;
+    const PSZ = NPC_SPRITE_SIZE; // 64 — authoring canvas; displayed scaled to TS×TS via drawImage
+
+    const off = document.createElement('canvas');
+    off.width = off.height = PSZ;
+    const c = off.getContext('2d');
+    c.imageSmoothingEnabled = false;
+
+    const U   = Math.max(1, Math.floor(PSZ / 16));
+    const cx  = Math.floor(PSZ / 2);
+    const bob = (frameIdx === 1 || frameIdx === 3 || frameIdx === 5) ? -Math.max(1, Math.floor(PSZ / 32)) : 0;
+
+    const headR  = Math.max(2, Math.floor(PSZ * 0.145));
+    const headW  = headR * 2;
+    const headH  = headR * 2;
+    const headX  = cx - headR;
+    const headCY = Math.floor(PSZ * 0.22) + bob;
+    const headY  = headCY - headR;
+
+    const bodyW  = Math.floor(PSZ * 0.44 * cfg.widthMul);
+    const bodyH  = Math.floor(PSZ * 0.32);
+    const bodyX  = cx - Math.floor(bodyW / 2);
+    const bodyY  = Math.floor(PSZ * 0.40) + bob;
+    const sW     = Math.max(U, Math.floor(PSZ * 0.08));
+
+    const legW    = Math.max(1, Math.floor(PSZ * 0.12));
+    const legH    = Math.floor(PSZ * 0.22);
+    const legTopY = bodyY + bodyH - 1;
+    const leftLegX  = bodyX + U;
+    const rightLegX = bodyX + bodyW - U - legW;
+    const leftLegDY  = frameIdx === 1 ? -U : frameIdx === 3 ?  U : 0;
+    const rightLegDY = frameIdx === 1 ?  U : frameIdx === 3 ? -U : 0;
+
+    // ── 1. Ground shadow ──────────────────────────────────────────────
+    c.globalAlpha = 0.22;
+    c.fillStyle = '#000000';
+    c.fillRect(cx - Math.floor(PSZ*0.20), Math.floor(PSZ*0.84), Math.floor(PSZ*0.40), Math.max(1, Math.floor(PSZ*0.05)));
+    c.globalAlpha = 1;
+
+    // ── 2. Cloak ──────────────────────────────────────────────────────
+    const cloakFlare = Math.max(U*2, Math.floor(PSZ * 0.10));
+    const cloakTopY  = bodyY + Math.floor(bodyH * 0.35);
+    const cloakBotY  = legTopY + legH + U;
+    const cloakX     = bodyX - cloakFlare;
+    const cloakW     = bodyW + cloakFlare * 2;
+    c.fillStyle = P.cloak;
+    c.fillRect(cloakX, cloakTopY, cloakW, cloakBotY - cloakTopY);
+    // Outer edge strips
+    c.fillStyle = P.cloakEdge;
+    c.fillRect(cloakX,              cloakTopY, 1, cloakBotY - cloakTopY);
+    c.fillRect(cloakX + cloakW - 1, cloakTopY, 1, cloakBotY - cloakTopY);
+    // Inner lining strips — lighter than base, suggests fabric interior
+    c.fillStyle = P.cloakLining;
+    c.fillRect(cloakX + 1,              cloakTopY, 1, cloakBotY - cloakTopY);
+    c.fillRect(cloakX + cloakW - 2,     cloakTopY, 1, cloakBotY - cloakTopY);
+    // Fold lines — two vertical crease marks suggesting drape
+    const fold1X = cloakX + Math.floor(cloakW * 0.30);
+    const fold2X = cloakX + Math.floor(cloakW * 0.70);
+    c.fillStyle = P.cloakFold;
+    c.fillRect(fold1X, cloakTopY + 2, 1, cloakBotY - cloakTopY - 4);
+    c.fillRect(fold2X, cloakTopY + 2, 1, cloakBotY - cloakTopY - 4);
+
+    // ── 3. Legs ───────────────────────────────────────────────────────
+    if (facing === 'left' || facing === 'right') {
+        c.fillStyle = P.legs;
+        c.fillRect(bodyX + U, legTopY, bodyW - U*2, legH);
+        c.fillStyle = P.boots;
+        c.fillRect(bodyX + U, legTopY + legH - U, bodyW - U*2, U);
+        c.fillStyle = P.bootSole;
+        c.fillRect(bodyX + U, legTopY + legH, bodyW - U*2, 1);
+    } else {
+        c.fillStyle = P.legs;
+        c.fillRect(leftLegX,  legTopY + leftLegDY,  legW, legH);
+        c.fillRect(rightLegX, legTopY + rightLegDY, legW, legH);
+        c.fillStyle = P.boots;
+        c.fillRect(leftLegX,  legTopY + leftLegDY  + legH - U, legW, U);
+        c.fillRect(rightLegX, legTopY + rightLegDY + legH - U, legW, U);
+        c.fillStyle = P.bootSole;
+        c.fillRect(leftLegX,  legTopY + leftLegDY  + legH, legW, 1);
+        c.fillRect(rightLegX, legTopY + rightLegDY + legH, legW, 1);
+    }
+
+    // ── 4. Silhouette outline ─────────────────────────────────────────
+    c.fillStyle = _CHAR_OUTLINE;
+    c.fillRect(headX,             headY - 1, headW,          1);
+    c.fillRect(headX - 1,         headY,     1,               headH);
+    c.fillRect(headX + headW,     headY,     1,               headH);
+    c.fillRect(bodyX - sW - 1,    bodyY,     1, bodyH + legH + 1);
+    c.fillRect(bodyX + bodyW + sW, bodyY,    1, bodyH + legH + 1);
+    c.fillRect(bodyX - sW - 1, legTopY + legH, bodyW + sW*2 + 2, 1);
+
+    // ── 4a. Elf ears (before head fill) ──────────────────────────────
+    if (cfg.elfEars) {
+        c.fillStyle = cfg.skin;
+        c.fillRect(headX,             headY - 1, 1, 2); // left ear nub
+        c.fillRect(headX + headW - 1, headY - 1, 1, 2); // right ear nub
+    }
+
+    // ── 5. Body + shoulders ───────────────────────────────────────────
+    c.fillStyle = P.armor;
+    c.fillRect(bodyX, bodyY, bodyW, bodyH);
+    c.fillStyle = P.armorSh;
+    c.fillRect(bodyX - sW, bodyY + U,    sW, Math.floor(bodyH * 0.55));
+    c.fillRect(bodyX + bodyW, bodyY + U, sW, Math.floor(bodyH * 0.55));
+    c.fillStyle = P.collar;
+    c.fillRect(bodyX + U, bodyY + U, bodyW - U*2, U);
+    // Bevel: top-left bright, bottom-right dark
+    c.fillStyle = P.armorHi;
+    c.fillRect(bodyX, bodyY, bodyW, 1);
+    c.fillRect(bodyX, bodyY, 1, bodyH);
+    c.fillStyle = P.armorSh;
+    c.fillRect(bodyX, bodyY + bodyH - 1, bodyW, 1);
+    c.fillRect(bodyX + bodyW - 1, bodyY, 1, bodyH);
+    // Belt + buckle
+    const beltY = bodyY + bodyH - 4;
+    c.fillStyle = P.belt;
+    c.fillRect(bodyX, beltY, bodyW, 1);
+    c.fillStyle = P.buckle;
+    c.fillRect(cx - 1, beltY, 2, 2);
+
+    // ── 6. Head fill ──────────────────────────────────────────────────
+    c.fillStyle = cfg.skin;
+    c.fillRect(headX + 1, headY,     headW - 2, headH);
+    c.fillRect(headX,     headY + 1, headW,     headH - 2);
+
+    // ── 7. Head shading ───────────────────────────────────────────────
+    c.fillStyle = cfg.skinHi;
+    c.fillRect(headX + 1, headY,     headW - 2, 1);
+    c.fillRect(headX,     headY + 1, 1, headH - 2);
+    c.fillStyle = cfg.skinSh;
+    c.fillRect(headX + 1, headY + headH - 1, headW - 2, 1);
+    c.fillRect(headX + headW - 1, headY + 1, 1, headH - 2);
+
+    // ── 8. Hair and face detail ───────────────────────────────────────
+    const hairH = Math.max(U, Math.floor(headH * 0.42));
+    const sideH = Math.floor(headH * 0.25);
+    const eyeY  = headCY + Math.floor(headH * 0.05);
+
+    if (facing === 'up') {
+        c.fillStyle = cfg.hair;
+        c.fillRect(headX + 1, headY,     headW - 2, headH);
+        c.fillRect(headX,     headY + 1, headW,     headH - 2);
+    } else {
+        // Hair band with top highlight row
+        c.fillStyle = cfg.hair;
+        c.fillRect(headX + 1, headY,     headW - 2, hairH);
+        c.fillRect(headX,     headY + 1, headW,     hairH - 1);
+        c.fillStyle = _CHAR_HAIR_HI;
+        c.fillRect(headX + 1, headY, headW - 2, 1); // top highlight row
+        // Sideburns
+        c.fillStyle = cfg.hair;
+        c.fillRect(headX,             headY + hairH, 1, sideH);
+        c.fillRect(headX + headW - 1, headY + hairH, 1, sideH);
+
+        if (facing === 'down') {
+            // Eyes: hard-coded 2×2 whites, 1×1 pupils — no U-derived eyeSize
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx - 4, eyeY, 2, 2); // left white
+            c.fillRect(cx + 2, eyeY, 2, 2); // right white
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx - 3, eyeY + 1, 1, 1); // left pupil (bottom-right of white)
+            c.fillRect(cx + 2, eyeY + 1, 1, 1); // right pupil (bottom-left of white)
+            // Nose dot
+            c.fillStyle = cfg.skinSh;
+            c.fillRect(cx, headCY + Math.floor(headH * 0.20), 1, 1);
+            // Mouth hint (2×2)
+            c.fillRect(cx - 1, headCY + Math.floor(headH * 0.35), 2, 2);
+        } else if (facing === 'left') {
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx - 6, eyeY, 2, 2);
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx - 6, eyeY + 1, 1, 1); // pupil on inner edge
+        } else { // right
+            c.fillStyle = _CHAR_EYE_W;
+            c.fillRect(cx + 4, eyeY, 2, 2);
+            c.fillStyle = _CHAR_EYE_D;
+            c.fillRect(cx + 5, eyeY + 1, 1, 1); // pupil on inner edge
+        }
+    }
+
+    // ── 9. Helmet / headwear ──────────────────────────────────────────
+    if (!cfg.bareHead) {
+        const helmH = Math.max(1, Math.floor(headH * 0.28));
+        c.fillStyle = P.helmet;
+        c.fillRect(headX + 1, headY, headW - 2, helmH);
+        c.fillRect(headX,     headY + 1, headW, helmH - 1);
+        c.fillStyle = P.helmetHi;
+        c.fillRect(headX + 1, headY, headW - 2, 1);
+    }
+
+    // ── 10. Accessories ───────────────────────────────────────────────
+    if (cfg.accessory === 'staff') {
+        // Tall walking staff to the right of body
+        c.fillStyle = _NPC_WOOD;
+        c.fillRect(bodyX + bodyW + sW + 2, bodyY - headH, 2, bodyH + legH + headH + U);
+    } else if (cfg.accessory === 'hammer') {
+        // Short-handle hammer to the right
+        const hHandleX = bodyX + bodyW + sW + 2;
+        const hHandleY = bodyY + Math.floor(bodyH * 0.30);
+        c.fillStyle = _NPC_WOOD;
+        c.fillRect(hHandleX, hHandleY, 2, Math.floor(bodyH * 0.70) + legH);
+        c.fillStyle = _NPC_METAL;
+        c.fillRect(hHandleX - 2, hHandleY - U, 6, U * 2);
+        c.fillStyle = _NPC_METAL_HI;
+        c.fillRect(hHandleX - 2, hHandleY - U, 6, 1); // top highlight
+        c.fillStyle = _NPC_METAL_SH;
+        c.fillRect(hHandleX - 2, hHandleY - U + U*2 - 1, 6, 1); // bottom shadow
+    } else if (cfg.accessory === 'satchel') {
+        // Small leather pouch at right hip
+        const spX = bodyX + bodyW + 2;
+        const spY = legTopY - U;
+        c.fillStyle = _NPC_WOOD;          // leather brown
+        c.fillRect(spX, spY, 4, 5);
+        c.fillStyle = _NPC_METAL_SH;      // strap shadow line
+        c.fillRect(spX, spY, 4, 1);
+    } else if (cfg.accessory === 'scroll') {
+        // Rolled scroll at left hip
+        const scX = bodyX - 5;
+        const scY = legTopY;
+        c.fillStyle = _NPC_PARCHMENT;
+        c.fillRect(scX, scY, 3, 8);
+        c.fillStyle = _NPC_WOOD;           // end caps
+        c.fillRect(scX, scY,     3, 1);
+        c.fillRect(scX, scY + 7, 3, 1);
+    }
+
+    _npcCache.set(key, off);
+    return off;
+}
+
+function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, walkPhase=0, isMoving=false, npcId=null) {
     const cx=sx+TS/2, cy=sy+TS/2, r=TS*.28, t=timeMs/1000;
 
     // Player (non-ghost): pixel art sprite blitted from cache
@@ -1634,73 +2048,46 @@ function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, wal
         } else {
             frameIdx = 4 + (Math.floor(timeMs / 166) % 2);
         }
-        const frame = _buildCharFrame(color, facing, frameIdx);
-        ctx.drawImage(frame, Math.round(sx), Math.round(sy));
+        const frame = _buildCharFrame(gs.charClass || 'Warrior', facing, frameIdx);
+        ctx.drawImage(frame, Math.round(sx), Math.round(sy), TS, TS);
         const hasWeapon = gs.inventory.some(i => i.questComplete === 'quest_weapon_complete');
         if (hasWeapon) drawWeapon(cx, cy, r, facing);
-        // NPC labels never shown for player, so return early
         return;
     }
 
-    // NPCs and ghost characters: circle-based rendering (unchanged)
-    const walkBob = isMoving ? Math.abs(Math.sin(walkPhase)) * TS * 0.055 : 0;
-    const idlePhase = t * 1.1 + cx * 0.031;
-    const npcBob = isPlayer ? 0 : Math.sin(idlePhase) * 1.4;
-    const totalBob = isPlayer ? -walkBob : npcBob;
-
-    ctx.save(); ctx.translate(0, totalBob);
-    if (ghost) { ctx.globalAlpha=0.55+0.15*Math.sin(t*2.2); ctx.shadowColor='#80b0ff'; ctx.shadowBlur=18; }
-
-    {
-        const [fdx,fdy] = _CHAR_DIRS[facing] || _CHAR_DIRS.down;
-        const [fpx,fpy] = [-fdy, fdx];
-        const footR = r * 0.22;
-        const footPhase = isPlayer ? walkPhase : idlePhase * 0.6;
-        const footSwing = isPlayer ? (isMoving ? r * 0.38 : r * 0.08) : r * 0.13;
-        const footColor = ghost ? '#8090c0' : '#2a1a0a';
-        const fbx = cx - fdx * r * 0.15;
-        const fby = cy - fdy * r * 0.15;
-        ctx.fillStyle = footColor;
-        const lx = fbx + fpx * Math.sin(footPhase) * footSwing;
-        const ly = fby + fpy * Math.sin(footPhase) * footSwing;
-        ctx.beginPath(); ctx.arc(lx, ly, footR, 0, Math.PI*2); ctx.fill();
-        const rx2 = fbx + fpx * Math.sin(footPhase + Math.PI) * footSwing;
-        const ry2 = fby + fpy * Math.sin(footPhase + Math.PI) * footSwing;
-        ctx.beginPath(); ctx.arc(rx2, ry2, footR, 0, Math.PI*2); ctx.fill();
-    }
-
-    const shadowScale = 1 - (walkBob / (TS * 0.12)) * 0.25;
-    ctx.fillStyle='rgba(0,0,0,0.28)';
-    ctx.beginPath(); ctx.ellipse(cx,cy+r+3,r*.7*shadowScale,r*.22*shadowScale,0,0,Math.PI*2); ctx.fill();
-    const cloakC=ghost?'rgba(80,110,200,0.7)':isPlayer?(CLASS_CLOAK[gs.charClass]||'#4a2810'):'rgba(20,12,8,0.65)';
-    ctx.shadowBlur=0;
-    ctx.fillStyle=cloakC; ctx.beginPath(); ctx.arc(cx,cy+r*.1,r*1.12,0,Math.PI*2); ctx.fill();
-    ctx.shadowBlur=0;
-    ctx.fillStyle=ghost?'rgba(140,180,255,0.82)':color;
-    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=1.5; ctx.stroke();
-    const [hox,hoy]=_HEAD_OFF[facing]||_HEAD_OFF.down;
-    const hx=cx+hox*r, hy=cy+hoy*r;
-    ctx.fillStyle=ghost?'#c0d0ff':'#e8cfa0';
-    ctx.beginPath(); ctx.arc(hx,hy,r*.40,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=1; ctx.stroke();
-    ctx.fillStyle=ghost?'#a0c8ff':'#281808';
-    const _ep=_EYE_POS[facing]||_EYE_POS.down;
-    for (let _ei=0;_ei<_ep.length;_ei++) {
-        ctx.beginPath(); ctx.arc(hx+_ep[_ei].x*r,hy+_ep[_ei].y*r,r*.10,0,Math.PI*2); ctx.fill();
-    }
-    ctx.shadowBlur=0; ctx.globalAlpha=1; ctx.restore();
-
-    if (!isPlayer) {
-        ctx.font='11px sans-serif'; ctx.textAlign='center';
-        const nw=ctx.measureText(name).width;
-        ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(cx-nw/2-4,sy-23,nw+8,15);
-        ctx.fillStyle=ghost?'#b0d0ff':'#e8d0b0'; ctx.textBaseline='top'; ctx.fillText(name,cx,sy-22);
-    }
-    if (!isPlayer&&isNear) {
-        ctx.fillStyle='#ffe040'; ctx.font=`bold ${Math.max(14,TS*.32)}px sans-serif`;
-        ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.fillText('!',cx,sy-2+Math.sin(timeMs/280)*3);
+    // NPCs: pixel art sprite blitted from cache
+    if (npcId) {
+        const cfg = _NPC_CONFIGS[npcId];
+        if (cfg) {
+            const frameIdx = Math.floor(timeMs / 500) % 6;
+            const frame = _buildNPCFrame(npcId, facing, frameIdx);
+            if (frame) {
+                const idleBob = Math.round(Math.sin(t * 1.1 + cx * 0.031) * 1.4);
+                ctx.save();
+                if (ghost || cfg.ghost) {
+                    ctx.globalAlpha = 0.55 + 0.15 * Math.sin(t * 2.2);
+                    ctx.shadowColor = '#80b0ff';
+                    ctx.shadowBlur = 18;
+                }
+                ctx.drawImage(frame, Math.round(sx), Math.round(sy) + idleBob, TS, TS);
+                ctx.shadowBlur = 0;
+                ctx.restore();
+                ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+                const nw = ctx.measureText(name).width;
+                ctx.fillStyle = 'rgba(0,0,0,0.72)';
+                ctx.fillRect(cx - nw/2 - 4, sy - 23, nw + 8, 15);
+                ctx.fillStyle = (ghost || cfg.ghost) ? '#b0d0ff' : '#e8d0b0';
+                ctx.textBaseline = 'top';
+                ctx.fillText(name, cx, sy - 22);
+                if (isNear) {
+                    ctx.fillStyle = '#ffe040';
+                    ctx.font = `bold ${Math.max(14, TS * 0.32)}px sans-serif`;
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+                    ctx.fillText('!', cx, sy - 2 + Math.sin(timeMs / 280) * 3);
+                }
+                return;
+            }
+        }
     }
 }
 
@@ -2188,7 +2575,6 @@ function renderMinimap() {
 // ═══════════════════════════════════════════════════════
 function render() {
     if (Game.DEV) {
-        if (_charCacheTS  !== 0 && _charCacheTS  !== TS) console.error('[CacheAssert] _charCache TS mismatch: expected', TS, 'got', _charCacheTS);
         if (_enemyCacheTS !== 0 && _enemyCacheTS !== TS) console.error('[CacheAssert] _enemyCache TS mismatch: expected', TS, 'got', _enemyCacheTS);
         if (_chestCacheTS !== 0 && _chestCacheTS !== TS) console.error('[CacheAssert] _chestCache TS mismatch: expected', TS, 'got', _chestCacheTS);
     }
@@ -2220,7 +2606,7 @@ function render() {
     for (const npc of currentMap.npcs) {
         const sx=Math.round(npc.x*TS-cam.x), sy=Math.round(npc.y*TS-cam.y);
         if (sx>-TS*2&&sx<cW+TS&&sy>-TS*2&&sy<cH+TS)
-            drawCharacter(sx,sy,npc.color,'down',npc.name,false,isAdjacent(npc.x,npc.y),npc.ghost);
+            drawCharacter(sx,sy,npc.color,'down',npc.name,false,isAdjacent(npc.x,npc.y),npc.ghost,0,false,npc.id);
     }
     if (currentMap.enemies) {
         for (const en of currentMap.enemies) {
@@ -2239,19 +2625,17 @@ function render() {
     particleSystem.renderMotes(ctx);               // atmospheric dust motes
     renderLighting();   // dynamic darkness + torch light + warm color bleed
     renderVignette();   // corner vignette in interiors
-    if (typeof VQ !== 'undefined') {
-        VQ.renderOutdoorTorchGlow(); // torch warm halo on lit maps
-        VQ.renderColorGrade();       // warm tone + full-scene vignette
-    }
-    // Scanlines — subtle atmospheric overlay, never affects HUD
-    if (!_scanlinesCanvas || _scanlinesCanvas.width !== cW || _scanlinesCanvas.height !== cH) _buildScanlinesCanvas();
-    ctx.drawImage(_scanlinesCanvas, 0, 0);
+    if (typeof VQ !== 'undefined') VQ.renderOutdoorTorchGlow(); // torch warm halo on lit maps (guarded, no-op during dark battle)
     if (battleSystem.isActive()) battleSystem.render(ctx);
     else updateHintBar();
+    // Scanlines + color grade always last — applies correctly over both overworld and battle
+    if (!_scanlinesCanvas || _scanlinesCanvas.width !== cW || _scanlinesCanvas.height !== cH) _buildScanlinesCanvas();
+    ctx.drawImage(_scanlinesCanvas, 0, 0);
+    if (typeof VQ !== 'undefined') VQ.renderColorGrade(); // warm tone + full-scene vignette
     _perf.draw(ctx, cW); // F3 toggles on-screen FPS counter (drawn last — above all other layers)
     renderMinimap();     // DOM canvas overlay — separate context, always last
 }
 
 // Public API for helper functions consumed by external files (SpriteRenderer.js, visual-quality.js).
 // All other render.js internals remain private.
-window.Render = { dither2, drawWallPlaque, drawSignPost };
+window.Render = { dither2, drawWallPlaque, drawSignPost, buildCharFrame: _buildCharFrame };

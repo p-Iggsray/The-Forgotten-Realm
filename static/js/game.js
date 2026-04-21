@@ -979,6 +979,7 @@ const cam     = Game.cam;      // owned by world.js — shim by reference
 // ui state owned by game-ui.js — exposed as window.ui
 const transition = { active: false, timerId: null };
 window.Game.transition = transition;
+Game.activeScene = null; // set by changeMap() on first call
 let TS        = Game.TS = 48;
 const HUD_H   = 40, HINT_H = 26;
 
@@ -1110,10 +1111,26 @@ function handleStairsUp() {
     }
 }
 
+function resetTransitionInvariants() {
+    invalidateTileCache();
+    markBgDirty();
+}
+
 function changeMap(mapId, sx, sy) {
+    Game.transition.active = true;
+
+    const fromId    = Game.currentMap?.id ?? null;
+    const fromScene = Game.activeScene;
+
+    // EXIT — leave current scene
+    fromScene?.onExit?.(mapId);
+
+    // INVARIANT-RESET — clears state that must not persist across any transition
+    resetTransitionInvariants();
+
+    // TRANSITIONAL — swap core state
     currentMap = Game.currentMap = MAPS[mapId];
-    buildVariantMap(currentMap); // pre-compute tile variant indices for new map
-    invalidateTileCache(); // previous map's tile entries are now dead weight
+    buildVariantMap(currentMap);
     player.x   = sx !== undefined ? sx : currentMap.playerStart.x;
     player.y   = sy !== undefined ? sy : currentMap.playerStart.y;
     player.facing = 'down';
@@ -1121,16 +1138,14 @@ function changeMap(mapId, sx, sy) {
     player.prevX = player.renderX;  player.prevY = player.renderY;
     player.moveT = 1; player.isMoving = false;
     updateCamera();
-    markBgDirty(); // new map — force full bg cache rebuild
 
+    // ENTER — activate new scene
+    const toScene = SCENES[mapId];
+    Game.activeScene = toScene ?? null;
     document.getElementById('hud-location').textContent = currentMap.name;
+    toScene?.onEnter?.(fromId);
 
-    // Quest: entering dungeon for first time
-    if (mapId === 'dungeon_1' && !gs.flags.quest_into_dark_complete) {
-        gs.flags.quest_into_dark_complete = true;
-        setTimeout(() => showNotification('Quest Complete: Into the Dark', 'quest'), 800);
-        updateQuestUI();
-    }
+    Game.transition.active = false;
 }
 
 // ═══════════════════════════════════════════════════════
