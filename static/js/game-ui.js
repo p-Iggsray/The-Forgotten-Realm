@@ -12,19 +12,32 @@ const QUESTS            = Game.QUESTS;
 const QUEST_GIVER_FLAGS = Game.QUEST_GIVER_FLAGS;
 const TILE              = Game.TILE;
 const CLASS_STATS        = Game.CLASS_STATS;
+// Game.GIVEABLE_ITEMS accessed inside function bodies at runtime (set by game-constants.js)
 // Game.BUILDING_ENTRANCES and Game.MAX_LEVEL are set by game.js — accessed inside function bodies at runtime
 
 // ── UI state ─────────────────────────────────────────
 const ui = {
-    dialogue:     null,
-    sign:         null,
-    loading:      false,
-    questLog:     false,
-    paused:       false,
-    inventory:    false,
+    dialogue:      null,
+    sign:          null,
+    loading:       false,
+    questLog:      false,
+    paused:        false,
+    inventory:     false,
     dialogueError: null,
+    codex:         false,
 };
 window.ui = ui;
+
+let _pendingClose = false;
+let _activeController = null;
+let _lastLoreKey  = null;
+let _lastLoreTime = 0;
+let _codexSelIdx  = 0;
+
+const DARKNESS_TINT                 = 'rgba(20, 0, 30, 0.15)';
+const DARKNESS_AMBIENT_REDUCTION    = 0.05;
+const SEAL_WEAKENING_ENEMY_HP_BONUS = 0.10;
+const DEBUG_WORLD_EVENTS            = window.location.hostname === 'localhost';
 
 // ── Internal write path (enforces invariants) ────────
 function setLoading(bool) { ui.loading = bool; }
@@ -109,12 +122,19 @@ function updateHintBar() {
 // ═══════════════════════════════════════════════════════
 //  SIGN
 // ═══════════════════════════════════════════════════════
+function onQuestComplete(q) {
+    if (!q) return;
+    updateQuestUI();
+    setTimeout(() => showNotification(`Quest Complete: ${q.title}`, 'quest'), 600);
+    if (typeof fireNarration === 'function') {
+        fireNarration('quest_complete', { quest_name: q.title, npc_name: q.giverName });
+    }
+}
+
 function showSign(text, questComplete) {
     if(questComplete&&gs.flags[questComplete.given]&&!gs.flags[questComplete.complete]){
         gs.flags[questComplete.complete]=true;
-        const q=QUESTS.find(q=>q.flag_complete===questComplete.complete);
-        if(q) setTimeout(()=>showNotification(`Quest Complete: ${q.title}`,'quest'),800);
-        updateQuestUI();
+        onQuestComplete(QUESTS.find(q=>q.flag_complete===questComplete.complete));
     }
     ui.sign=true;
     document.getElementById('sign-text').textContent=text;
@@ -143,6 +163,9 @@ async function startDialogue(npc) {
     const dlgText = document.getElementById('dlg-text');
     document.getElementById('dlg-name').textContent     = npc.name;
     document.getElementById('dlg-portrait').textContent = npc.portrait;
+    const _rep  = gs.reputation?.[npc.id] ?? 0;
+    const _dots = '\u25CF'.repeat(_rep) + '\u25CB'.repeat(3 - _rep);
+    document.getElementById('dlg-rapport').textContent  = _rep > 0 ? _dots : '';
     dlgText.textContent = 'Thinking\u2026';
     dlgText.classList.add('dlg-loading');
     document.getElementById('dlg-player-msg').textContent = '';
@@ -154,12 +177,26 @@ async function startDialogue(npc) {
     }, DIALOGUE_SLOW_MS);
 
     try {
-        const data  = await callInteract(npc, '', npc.history);
-        npc.history = data.history;
-        ui.dialogue = npc;
+        let _firstChunk = true;
+        const data = await callInteract(npc, '', (chunk, fullText, isDone, payload) => {
+            const dlgText = document.getElementById('dlg-text');
+            if (isDone) { dlgText.classList.remove('streaming'); return; }
+            if (_firstChunk) {
+                _firstChunk = false;
+                ui.dialogue = npc;
+                clearTimeout(slowTimer);
+                dlgText.classList.remove('dlg-loading');
+                dlgText.classList.add('streaming');
+                dlgText.textContent = '';
+            }
+            dlgText.textContent = fullText;
+        });
+        if (!gs.sessionId && data.session_id) gs.sessionId = data.session_id;
+        if (!ui.dialogue) ui.dialogue = npc;
         showDialogueData(data);
         _dlgFocus();
     } catch (err) {
+        if (err.name === 'AbortError') return;
         _showDialogueError(_categorizeError(err), npc);
     } finally {
         clearTimeout(slowTimer);
@@ -173,6 +210,7 @@ async function sendDialogueMessage() {
     const text = inp.value.trim();
     if (!text) return;
     inp.value = '';
+    document.getElementById('dlg-options').innerHTML = '';
     const npc   = ui.dialogue;
     setLoading(true);
     document.getElementById('dlg-player-msg').textContent = `You: \u201c${text}\u201d`;
@@ -186,8 +224,19 @@ async function sendDialogueMessage() {
     }, DIALOGUE_SLOW_MS);
 
     try {
-        const data  = await callInteract(npc, text, npc.history);
-        npc.history = data.history;
+        let _firstChunk = true;
+        const data = await callInteract(npc, text, (chunk, fullText, isDone, payload) => {
+            const dlgText = document.getElementById('dlg-text');
+            if (isDone) { dlgText.classList.remove('streaming'); return; }
+            if (_firstChunk) {
+                _firstChunk = false;
+                clearTimeout(slowTimer);
+                dlgText.classList.remove('dlg-loading');
+                dlgText.classList.add('streaming');
+                dlgText.textContent = '';
+            }
+            dlgText.textContent = fullText;
+        });
         setLoading(false);
         if (data.quest_given) {
             const flag = QUEST_GIVER_FLAGS[npc.id];
@@ -198,7 +247,18 @@ async function sendDialogueMessage() {
                 updateQuestUI();
             }
         }
-        if (data.ended) { closeDialogue(); return; }
+        if (data.ended) {
+            _pendingClose = true;
+            _applySignalTokens(data, npc);
+            showDialogueData({ ...data, options: [] });
+            _renderOptions(['Goodbye.']);
+            document.querySelector('#dlg-options .dlg-option-btn')?.addEventListener('click', () => {
+                _pendingClose = false;
+                closeDialogue();
+            }, { once: true });
+            return;
+        }
+        _applySignalTokens(data, npc);
         showDialogueData(data);
         _dlgFocus();
     } catch (err) {
@@ -209,14 +269,129 @@ async function sendDialogueMessage() {
     }
 }
 
-async function callInteract(npc, playerText, history) {
+function handleWorldEvent(key) {
+    if (!Array.isArray(gs.activeWorldEvents)) gs.activeWorldEvents = [];
+    if (gs.activeWorldEvents.includes(key)) return;
+
+    if (DEBUG_WORLD_EVENTS) {
+        console.group('[WORLD EVENT]');
+        console.log('key:', key, '| time:', Date.now(), '| map:', Game.currentMap?.id);
+        console.groupEnd();
+    }
+
+    const handlers = {
+        darkness_spreads: () => {
+            gs.flags.world_darkness_active = true;
+            AMBIENT_LINES.guide = [
+                "Have you noticed the air near the mines? It's different.",
+                "I keep thinking about what the Elder said. About waiting too long.",
+                "The light looks the same. It just — doesn't feel the same.",
+            ];
+            if (typeof fireNarration === 'function') {
+                fireNarration('world_event', { world_event: 'darkness_spreads', map_name: Game.currentMap?.name });
+            }
+        },
+        seal_weakening: () => {
+            gs.flags.world_seal_weakening = true;
+            Game._sealPulseEnd = (Game.timeMs || 0) + 2000;
+            const enemies = Game.MAPS?.dungeon_1?.enemies;
+            if (Array.isArray(enemies)) {
+                enemies.forEach(e => {
+                    if (e.alive) {
+                        e.hp = Math.round(e.hp * (1 + SEAL_WEAKENING_ENEMY_HP_BONUS));
+                        e._sealBoosted = true;
+                    }
+                });
+            }
+            if (typeof fireNarration === 'function') {
+                fireNarration('world_event', { world_event: 'seal_weakening', map_name: Game.currentMap?.name });
+            }
+        },
+        village_alert: () => {
+            gs.flags.world_village_alert = true;
+            const _ns = Game.MAPS?.village?.signs?.find(s => s.x === 8 && s.y === 8);
+            if (_ns) _ns.text = "NOTICE — BY ORDER OF ELDER MAREN\n\nDo not approach the south road after dark.\nThe mines are sealed until further notice.\nReport any strange sounds to the Elder immediately.\n\n— posted in haste";
+            AMBIENT_LINES.blacksmith = [...AMBIENT_LINES.blacksmith, "It's getting worse."];
+            AMBIENT_LINES.elder      = [...AMBIENT_LINES.elder,      "We have stayed too long pretending this was ordinary."];
+            AMBIENT_LINES.traveler   = [...AMBIENT_LINES.traveler,   "The warning I expected. It has arrived."];
+            Game._torchDimEnd = (Game.timeMs || 0) + 1500;
+        },
+        elder_desperate: () => {
+            gs.flags.world_elder_desperate = true;
+            AMBIENT_LINES.elder = [...AMBIENT_LINES.elder, "Every day we wait, it costs us something."];
+        },
+    };
+
+    const h = handlers[key];
+    if (h) {
+        gs.activeWorldEvents.push(key);
+        h();
+    } else {
+        console.warn(`[WorldEvent] Unknown event key: "${key}" — ignoring`);
+    }
+}
+
+function _applySignalTokens(data, npc) {
+    if (data.give_item) {
+        const item = Game.GIVEABLE_ITEMS?.[data.give_item];
+        if (item) {
+            gs.inventory.push({ ...item });
+            showNotification(`Received: ${item.name}`, 'item');
+        }
+    }
+    if (data.unlock_area) {
+        if (!gs.unlockedAreas.includes(data.unlock_area)) {
+            gs.unlockedAreas.push(data.unlock_area);
+            showNotification(`Area revealed: ${data.unlock_area.replace(/_/g, ' ')}`, 'info');
+        }
+    }
+    if (data.world_event) {
+        handleWorldEvent(data.world_event);
+    }
+    if (data.reveal_lore) {
+        if (!gs.knownLore.includes(data.reveal_lore)) {
+            gs.knownLore.push(data.reveal_lore);
+            _lastLoreKey  = data.reveal_lore;
+            _lastLoreTime = Date.now();
+            const _loreEntry = window.LORE_ENTRIES?.[data.reveal_lore];
+            const _loreTitle = _loreEntry ? _loreEntry.title : data.reveal_lore.replace(/_/g, ' ');
+            showNotification(`New lore discovered: ${_loreTitle}`, 'lore');
+            setTimeout(() => showNotification('Press L to read the Codex', 'info'), 3300);
+        }
+    }
+    if (data.reputation_change) {
+        const { npc_id, delta } = data.reputation_change;
+        const cur = gs.reputation[npc_id] ?? 0;
+        gs.reputation[npc_id] = Math.max(0, Math.min(3, cur + delta));
+    }
+}
+
+async function callInteract(npc, playerText, onChunk = null) {
     const ctrl  = new AbortController();
+    _activeController = ctrl;
     const timer = setTimeout(() => ctrl.abort(), DIALOGUE_TIMEOUT_MS);
     try {
         const res = await fetch('/interact', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({npc:{name:npc.name,role:npc.role,id:npc.id},playerText,history,flags:gs.flags}),
+            body: JSON.stringify({
+                npc: {name:npc.name, role:npc.role, id:npc.id},
+                playerText,
+                session_id: gs.sessionId || null,
+                flags: {
+                    ...gs.flags,
+                    charClass:       gs.charClass,
+                    charName:        gs.charName,
+                    knownLore:       gs.knownLore,
+                    unlockedAreas:   gs.unlockedAreas,
+                    reputation:      gs.reputation,
+                    npcMoods:        gs.npcMoods || {},
+                    activeWorldEvents: Array.from(gs.activeWorldEvents || []),
+                    currentMap:      Game.currentMap?.id,
+                    questsActive:    QUESTS.filter(q => gs.flags[q.flag_given] && !gs.flags[q.flag_complete]).map(q => q.id),
+                    questsCompleted: QUESTS.filter(q => gs.flags[q.flag_complete]).map(q => q.id),
+                },
+            }),
             signal: ctrl.signal
         });
         if (!res.ok) {
@@ -226,6 +401,7 @@ async function callInteract(npc, playerText, history) {
             err.category = res.status >= 500 ? 'server' : 'client';
             throw err;
         }
+        if (onChunk && res.body?.getReader) return await _readStream(res, onChunk);
         try {
             return await res.json();
         } catch (_) {
@@ -235,7 +411,47 @@ async function callInteract(npc, playerText, history) {
         }
     } finally {
         clearTimeout(timer);
+        _activeController = null;
     }
+}
+
+async function _readStream(res, onChunk) {
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '', accumulated = '', skipFlag = false;
+
+    const skipHandler = () => {
+        skipFlag = true;
+        const el = document.getElementById('dlg-text');
+        if (el && accumulated) { el.classList.remove('streaming'); el.textContent = accumulated; }
+    };
+    document.addEventListener('keydown', skipHandler, { once: true, capture: true });
+
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop();
+            for (const part of parts) {
+                if (!part.startsWith('data: ')) continue;
+                let payload;
+                try { payload = JSON.parse(part.slice(6)); } catch { continue; }
+                if (payload.chunk !== undefined) {
+                    accumulated += payload.chunk;
+                    if (!skipFlag) onChunk(payload.chunk, accumulated, false, null);
+                } else if (payload.done) {
+                    document.removeEventListener('keydown', skipHandler, { capture: true });
+                    onChunk(null, accumulated, true, payload);
+                    return payload;
+                }
+            }
+        }
+    } finally {
+        document.removeEventListener('keydown', skipHandler, { capture: true });
+    }
+    return null;
 }
 
 function _categorizeError(err) {
@@ -253,10 +469,32 @@ function _showDialogueError(type, npc) {
 }
 
 function showDialogueData(data) {
-    const el=document.getElementById('dlg-text');
-    el.textContent=data.dialogue;
+    const el = document.getElementById('dlg-text');
+    el.textContent = data.dialogue;
     el.classList.remove('dlg-loading');
+    _renderOptions(data.options || []);
     _dlgSetInputEnabled(true);
+}
+
+function _renderOptions(options) {
+    const container = document.getElementById('dlg-options');
+    container.innerHTML = '';
+    if (!options.length) return;
+    options.forEach((text, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'dlg-option-btn';
+        btn.textContent = text;
+        btn.style.animationDelay = `${i * 50}ms`;
+        btn.addEventListener('click', () => _selectOption(text));
+        container.appendChild(btn);
+    });
+}
+
+function _selectOption(text) {
+    const inp = document.getElementById('dlg-input');
+    inp.value = text;
+    document.getElementById('dlg-options').innerHTML = '';
+    sendDialogueMessage();
 }
 
 function _dlgSetInputEnabled(on) {
@@ -270,13 +508,17 @@ function _dlgFocus() {
     setTimeout(()=>document.getElementById('dlg-input')?.focus(),50);
 }
 
-function closeDialogue() {
+function closeDialogue(force = false) {
+    if (_pendingClose && !force) return;
+    _pendingClose = false;
+    if (_activeController) { _activeController.abort(); _activeController = null; }
     const errNpc     = ui.dialogueError?.npc;
     ui.dialogue      = null;
     setLoading(false);
     ui.dialogueError = null;
     document.getElementById('dialogue-box').classList.add('hidden');
     document.getElementById('dlg-player-msg').textContent = '';
+    document.getElementById('dlg-options').innerHTML = '';
     const inp = document.getElementById('dlg-input');
     if (inp) { inp.value = ''; inp.disabled = false; }
     if (errNpc) showNotification(`Try approaching ${errNpc.name} again.`, 'info');
@@ -294,6 +536,118 @@ function openQuestLog() {
     document.getElementById('quest-log').classList.remove('hidden');
 }
 function closeQuestLog(){ui.questLog=false;document.getElementById('quest-log').classList.add('hidden');}
+
+// ═══════════════════════════════════════════════════════
+//  CODEX
+// ═══════════════════════════════════════════════════════
+
+function openCodex() {
+    if (ui.dialogue || ui.sign || ui.loading || window.battleSystem?.isActive()) return;
+    if (ui.codex) { closeCodex(); return; }
+    closeQuestLog(); closeInventory();
+    ui.codex = true;
+
+    const known = gs.knownLore || [];
+    if (known.length === 0) {
+        _codexSelIdx = 0;
+    } else if (_lastLoreKey && (Date.now() - _lastLoreTime) < 30_000) {
+        const idx = known.indexOf(_lastLoreKey);
+        _codexSelIdx = idx >= 0 ? idx : 0;
+    } else {
+        _codexSelIdx = Math.min(_codexSelIdx, Math.max(0, known.length - 1));
+    }
+
+    document.getElementById('codex-screen').classList.remove('hidden');
+    _drawCodexCanvas();
+    _renderCodex();
+}
+
+function closeCodex() {
+    ui.codex = false;
+    document.getElementById('codex-screen').classList.add('hidden');
+}
+
+function _renderCodex() {
+    const known  = gs.knownLore || [];
+    const list   = document.getElementById('codex-list');
+    const title  = document.getElementById('codex-entry-title');
+    const body   = document.getElementById('codex-entry-body');
+    const source = document.getElementById('codex-entry-source');
+    const empty  = document.getElementById('codex-empty');
+
+    list.innerHTML = '';
+
+    if (known.length === 0) {
+        empty.classList.remove('hidden');
+        title.textContent  = '';
+        body.textContent   = '';
+        source.textContent = '';
+        return;
+    }
+    empty.classList.add('hidden');
+
+    known.forEach((key, i) => {
+        const entry = window.LORE_ENTRIES?.[key];
+        if (!entry) return;
+        const btn = document.createElement('button');
+        btn.className   = 'codex-list-btn' + (i === _codexSelIdx ? ' selected' : '');
+        btn.textContent = entry.title;
+        btn.addEventListener('click', () => { _codexSelIdx = i; _renderCodex(); });
+        list.appendChild(btn);
+    });
+
+    const sel = window.LORE_ENTRIES?.[known[_codexSelIdx]];
+    if (sel) {
+        title.textContent  = sel.title;
+        body.textContent   = sel.body;
+        source.textContent = `\u2014 As told by ${sel.source}`;
+    }
+}
+
+function _drawCodexCanvas() {
+    const canvas = document.getElementById('codex-canvas');
+    if (!canvas) return;
+    const W = canvas.offsetWidth;
+    const H = canvas.offsetHeight;
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#c8a96e';
+    ctx.fillRect(0, 0, W, H);
+
+    const imageData = ctx.getImageData(0, 0, W, H);
+    const d = imageData.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const n = (Math.random() - 0.5) * 28;
+        d[i]   = Math.min(255, Math.max(0, d[i]   + n));
+        d[i+1] = Math.min(255, Math.max(0, d[i+1] + n));
+        d[i+2] = Math.min(255, Math.max(0, d[i+2] + n));
+    }
+    ctx.putImageData(imageData, 0, 0);
+
+    const SEG = 20;
+    ctx.strokeStyle = 'rgba(90,55,18,0.55)';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += SEG) { const y = (Math.random()-0.5)*4; x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let x = 0; x <= W; x += SEG) { const y = H+(Math.random()-0.5)*4; x===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let y = 0; y <= H; y += SEG) { const x = (Math.random()-0.5)*4; y===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
+    ctx.stroke();
+    ctx.beginPath();
+    for (let y = 0; y <= H; y += SEG) { const x = W+(Math.random()-0.5)*4; y===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y); }
+    ctx.stroke();
+
+    const vg = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.85);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(60,30,5,0.18)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+}
 
 function updateQuestUI() {
     const list=document.getElementById('quest-list');
@@ -515,6 +869,21 @@ document.addEventListener('keydown', e => {
     if (e.key === 'F11') { e.preventDefault(); toggleFullscreen(); }
 }, true);
 
+document.addEventListener('keydown', e => {
+    if (!ui.codex) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        _codexSelIdx = Math.min(_codexSelIdx + 1, Math.max(0, (gs.knownLore?.length || 1) - 1));
+        _renderCodex();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        _codexSelIdx = Math.max(_codexSelIdx - 1, 0);
+        _renderCodex();
+    } else if (e.key === 'Escape') {
+        closeCodex();
+    }
+});
+
 document.getElementById('pause-mainmenu').addEventListener('click', () => {
     closePause();
     document.getElementById('restart-btn').click();
@@ -526,7 +895,7 @@ document.getElementById('pause-mainmenu').addEventListener('click', () => {
 function resetUIState() {
     ui.dialogue = null; ui.sign = null; ui.questLog = false;
     setLoading(false); setPaused(false); ui.inventory = false;
-    ui.dialogueError = null;
+    ui.dialogueError = null; ui.codex = false;
     _selectedItem = null;
     _lastHint = null;
     _lastHpVal = -1; _lastHpMax = -1;
@@ -536,6 +905,7 @@ function resetUIState() {
     document.getElementById('quest-log').classList.add('hidden');
     document.getElementById('inventory-screen').classList.add('hidden');
     document.getElementById('defeat-overlay').classList.add('hidden');
+    document.getElementById('codex-screen').classList.add('hidden');
 }
 
 // ── Public API ───────────────────────────────────────
@@ -545,6 +915,8 @@ window.updateHintBar       = updateHintBar;
 window.showNotification    = showNotification;
 window.showDefeatOverlay   = showDefeatOverlay;
 window.hideDefeatOverlay   = hideDefeatOverlay;
+window.onQuestComplete     = onQuestComplete;
+window.handleWorldEvent    = handleWorldEvent;
 window.startDialogue       = startDialogue;
 window.sendDialogueMessage = sendDialogueMessage;
 window.closeDialogue       = closeDialogue;
@@ -555,6 +927,8 @@ window.updateQuestUI       = updateQuestUI;
 window.openInventory       = openInventory;
 window.closeInventory      = closeInventory;
 window.toggleInventory     = toggleInventory;
+window.openCodex           = openCodex;
+window.closeCodex          = closeCodex;
 window.updateInventoryUI   = updateInventoryUI;
 window.useSelectedItem     = useSelectedItem;
 window.showSign            = showSign;

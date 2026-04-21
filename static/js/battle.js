@@ -299,9 +299,25 @@ const battleSystem = (() => {
                     en.hp = 0; en.alive = false;
                     battle.phase = 'victory'; battle.timer = 2200;
                     battle.message = `${en.name} was defeated!`;
+                    if (typeof fireNarration === 'function') {
+                        fireNarration('enemy_defeated', {
+                            enemy_name:        en.name,
+                            enemy_type:        en.type,
+                            player_hp_percent: Math.round((Game.gs.hp / Game.gs.maxHp) * 100),
+                        });
+                    }
                 } else {
                     battle.phase = 'enemy_turn'; battle.timer = 1100;
                     battle.message = `${en.name}'s turn\u2026`;
+                    if (typeof fireNarration === 'function') {
+                        fireNarration('battle_result', {
+                            attacker:         Game.gs.charName,
+                            target:           en.name,
+                            damage:           battle.hitDmg,
+                            result_type:      battle.hitResult,
+                            enemy_hp_percent: Math.round((en.hp / Game.ENEMY_DEFS[en.type].hp) * 100),
+                        });
+                    }
                 }
             }
 
@@ -356,6 +372,15 @@ const battleSystem = (() => {
                 battle.message = dmg.type === 'miss' ? `${en.name}'s attack missed!` :
                                  dmg.type === 'crit' ? `${en.name} lands a critical hit for ${dmg.amount} damage!` :
                                                        `${en.name} attacked for ${dmg.amount} damage!`;
+                if (dmg.type !== 'miss' && typeof fireNarration === 'function') {
+                    fireNarration('battle_result', {
+                        attacker:          en.name,
+                        target:            Game.gs.charName,
+                        damage:            dmg.amount,
+                        result_type:       dmg.type === 'crit' ? 'CRITICAL!' : 'HIT!',
+                        player_hp_percent: Math.round((Game.gs.hp / Game.gs.maxHp) * 100),
+                    });
+                }
             }
 
         } else if (battle.phase === 'enemy_result') {

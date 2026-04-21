@@ -17,17 +17,20 @@ const input = (() => {
         KEYS.add(e.key);
         if (window.transition?.active) { e.preventDefault(); return; }
         if (window.battleSystem?.isActive()) { e.preventDefault(); window.battleSystem.handleInput(e.key); return; }
+        if (e.key === 'Escape') {
+            if (window.ui?.paused)    { window.closePause(); return; }
+            if (window.ui?.codex)     { window.closeCodex(); return; }
+            if (window.ui?.inventory) { window.closeInventory(); return; }
+            if (window.ui?.dialogue || window.ui?.sign || window.ui?.questLog) {
+                window.closeDialogue(true); window.closeSign(); window.closeQuestLog(); return;
+            }
+            window.openPause(); return;
+        }
+        if (window.ui?.dialogue) { e.preventDefault(); return; }
         if (e.key === 'Tab') { e.preventDefault(); window.toggleInventory(); return; }
+        if (e.key === 'l' || e.key === 'L') { e.preventDefault(); window.openCodex?.(); return; }
         if (e.key === 'e' || e.key === 'E') { e.preventDefault(); window.handleInteract(); }
         if (e.key === 'q' || e.key === 'Q') { e.preventDefault(); window.toggleQuestLog(); }
-        if (e.key === 'Escape') {
-            if (window.ui?.paused)    { window.closePause(); }
-            else if (window.ui?.inventory) { window.closeInventory(); }
-            else if (window.ui?.dialogue || window.ui?.sign || window.ui?.questLog) {
-                window.closeDialogue(); window.closeSign(); window.closeQuestLog();
-            }
-            else { window.openPause(); }
-        }
     });
 
     document.addEventListener('keyup', e => KEYS.delete(e.key));

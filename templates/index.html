@@ -218,8 +218,12 @@
             <button id="quest-btn" class="hud-btn">&#128220; Quests</button>
             <button id="music-toggle" class="hud-btn active">&#127925;</button>
             <button id="restart-btn" class="hud-btn">&#8635; New Game</button>
+            <span id="hud-alert-badge" class="hidden">&#9888; Alert</span>
         </div>
     </div>
+
+    <!-- DM Narrator bar -->
+    <div id="narrator-bar" aria-live="polite" aria-atomic="true"></div>
 
     <!-- Main canvas -->
     <canvas id="game-canvas" style="filter:contrast(1.08) saturate(1.2) brightness(0.95)"></canvas>
@@ -243,6 +247,30 @@
                 <button id="close-quest-log" class="back-btn">&#10005; Close</button>
             </div>
             <div id="quest-list"></div>
+        </div>
+    </div>
+
+    <!-- Codex -->
+    <div id="codex-screen" class="overlay hidden">
+        <div id="codex-inner">
+            <canvas id="codex-canvas"></canvas>
+            <div id="codex-content">
+                <div id="codex-header">
+                    <span id="codex-title-bar">Codex of Eldoria</span>
+                    <button class="codex-close-btn" onclick="closeCodex()">&#x2715;</button>
+                </div>
+                <div id="codex-columns">
+                    <div id="codex-list-col">
+                        <div id="codex-list"></div>
+                    </div>
+                    <div id="codex-entry-col">
+                        <div id="codex-empty" class="hidden">You have not yet learned the history of this place.</div>
+                        <div id="codex-entry-title"></div>
+                        <div id="codex-entry-body"></div>
+                        <div id="codex-entry-source"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -378,10 +406,12 @@
             <div class="dlg-header">
                 <div id="dlg-portrait">&#128100;</div>
                 <span id="dlg-name">NPC</span>
-                <button class="dlg-close-btn" onclick="closeDialogue()">&#x2715;</button>
+                <span id="dlg-rapport" class="dlg-rapport-dots"></span>
+                <button class="dlg-close-btn" onclick="closeDialogue(true)" aria-label="Close dialogue">&#x2715;</button>
             </div>
             <div id="dlg-player-msg"></div>
             <div id="dlg-text">...</div>
+            <div id="dlg-options"></div>
             <div class="dlg-input-row">
                 <input type="text" id="dlg-input" placeholder="Say something…" maxlength="240" autocomplete="off">
                 <button id="dlg-send" onclick="sendDialogueMessage()">&#9658;</button>
@@ -805,6 +835,7 @@ document.getElementById('begin-btn').addEventListener('click', () => {
      and visual-quality load. Violating this order triggers runtime assertions
      in SpriteRenderer.js and visual-quality.js. -->
 <script src="/static/js/game-noise.js"></script>
+<script src="/static/js/narrator.js"></script>
 <script src="/static/js/game-constants.js"></script>
 <script src="/static/js/world.js"></script>
 <script src="/static/js/audio.js"></script>

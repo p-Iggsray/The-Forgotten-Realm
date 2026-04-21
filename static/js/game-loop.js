@@ -49,6 +49,8 @@ function loop(ts) {
         updatePlayerAnim(dt);
         updateCamera();
         updateEnemies(dt);
+        updateAmbient(dt);
+        updateDiscovery();
         battleSystem.update(dt);
         if (!ui.loading && !ui.paused) particleSystem.update(dt, currentMap, player, TS);
         accumulator -= FIXED_STEP;

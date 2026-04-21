@@ -252,4 +252,13 @@ Game.QUEST_GIVER_FLAGS = {
     traveler:    'quest_sealed_truth_given',
 };
 
+// Items that NPCs can give the player via GIVE_ITEM signal token.
+Game.GIVEABLE_ITEMS = {
+    health_potion:        { id: 'health_potion',        name: 'Health Potion',        icon: '🧪', color: '#e84040', desc: 'Restores some health.' },
+    iron_key:             { id: 'iron_key',             name: 'Iron Key',             icon: '🗝️', color: '#b0b0b0', desc: 'A heavy iron key.' },
+    mysterious_component: { id: 'mysterious_component', name: 'Mysterious Component', icon: '🔮', color: '#9060e8', desc: 'Its purpose is unclear.' },
+    ancient_coin:         { id: 'ancient_coin',         name: 'Ancient Coin',         icon: '🪙', color: '#e8c050', desc: 'Old beyond reckoning.' },
+    elder_token:          { id: 'elder_token',          name: "Elder's Token",        icon: '📿', color: '#80e8a0', desc: 'Grants passage.' },
+};
+
 })();

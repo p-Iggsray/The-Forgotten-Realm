@@ -402,6 +402,7 @@ function buildVillageTiles() {
     // ── 7. Signs ────────────────────────────────────────────
     s(21,8,  SG);   // village welcome sign (on N–S road, y=8)
     s(21,32, SG);   // dungeon warning sign
+    s(8,  8, SG);   // notice board (village_alert target)
 
     // ── 8. Dungeon stairs ────────────────────────────────────
     s(21,34, ST);
@@ -718,34 +719,35 @@ function buildVeylaInterior() {
 //  WORLD ENTITY DATA
 // ═══════════════════════════════════════════════════════
 const GUIDE_NPCS = [
-    { id:'guide', name:'Rowan', x:21, y:15, portrait:'🧑', color:'#80c870', history:[],
+    { id:'guide', name:'Rowan', x:21, y:15, portrait:'🧑', color:'#80c870',
       role:'A friendly young villager who greets newcomers and introduces them to Eldoria.' },
 ];
 
 const VILLAGE_NPCS = [];  // Major NPCs are inside buildings; Rowan stays in the village square
 
 const ELDER_NPCS = [
-    { id:'elder', name:'Elder Maren', x:6, y:5, portrait:'👴', color:'#d0c870', history:[],
+    { id:'elder', name:'Elder Maren', x:6, y:5, portrait:'👴', color:'#d0c870',
       role:'The elderly leader of Eldoria. Wise but frightened — darkness spreads from the Cursed Mines to the south. He desperately needs someone to investigate. He will explicitly ask the player to enter the mines, promising a reward. If the player has entered the mines (quest_into_dark_complete=true), he reacts with relief and asks what they found.' },
 ];
 
 const BLACKSMITH_NPCS = [
-    { id:'blacksmith', name:'Daran', x:4, y:4, portrait:'🔨', color:'#d07040', history:[],
+    { id:'blacksmith', name:'Daran', x:4, y:4, portrait:'🔨', color:'#d07040',
       role:'The village blacksmith. Gruff, grieving. His brother Henrick went into the mines 3 months ago and never returned. He will ask the player to look for any sign of Henrick. If quest_brothers_fate_complete=true (Henrick\'s ring found), he breaks down and thanks the player, and says at least now he knows.' },
 ];
 
 const VEYLA_NPCS = [
-    { id:'traveler', name:'Veyla', x:5, y:2, portrait:'🧝', color:'#70a0e0', history:[],
+    { id:'traveler', name:'Veyla', x:5, y:2, portrait:'🧝', color:'#70a0e0',
       role:'A mysterious elven wanderer. Cryptic, testing. She knows an ancient sealed entity called the Hollow King lies in the mines. She will ask the player to find the ancient tablet that describes the seal. If quest_sealed_truth_complete=true, she reveals she is a Warden\'s descendant sent to reinforce the seal.' },
 ];
 
 const VILLAGE_SIGNS = [
     { x:21, y:8, text:'— ELDORIA —\n\nFounded in the Year of the Third Moon.\nPopulation: 23.\n\n"May the Old Gods light your path."' },
     { x:21, y:32, text:'THE CURSED MINES\n\n"Turn back. Whatever you hear below,\ndo not answer it."\n\n— scratched into the stone by a shaking hand', type:'stairs' },
+    { x:8,  y:8, text:'Notice Board\n\nNo current announcements.' },
 ];
 
 const DUNGEON_NPCS = [
-    { id:'ghost', name:"Mira's Ghost", x:5, y:12, portrait:'👻', color:'rgba(160,200,255,0.85)', history:[], ghost:true,
+    { id:'ghost', name:"Mira's Ghost", x:5, y:12, portrait:'👻', color:'rgba(160,200,255,0.85)', ghost:true,
       role:'The ghost of Mira, a young woman who died in the Cursed Mines three months ago. She is confused and fragmented, unable to fully remember what happened. She knows Henrick — he survived longer than the others and made it to the eastern passage before succumbing. She felt the presence of something cold and immense in the deep. She can guide the player east toward where Henrick fell.' },
 ];
 
@@ -757,6 +759,126 @@ const DUNGEON_ITEMS = [
       questRequired:'quest_brothers_fate_given',
       questComplete:'quest_brothers_fate_complete' },
 ];
+
+// ═══════════════════════════════════════════════════════
+//  LORE ENTRIES
+// ═══════════════════════════════════════════════════════
+const LORE_ENTRIES = {
+    hollow_king: {
+        key:    'hollow_king',
+        title:  'The Hollow King',
+        body:   'The entity imprisoned beneath the Cursed Mines was not defeated — it was contained, which is a different thing entirely. The elven seers who built the seal called it the Hollow King because it had consumed its own name and left nothing behind. Ancient, vast, and without purpose the way hunger is without purpose. The seal was designed to be permanent. Even those who placed it were not certain it would hold a thousand years. It has been eleven hundred.',
+        source: 'Veyla',
+    },
+    brightmines_history: {
+        key:    'brightmines_history',
+        title:  'The Brightmines',
+        body:   'Before the darkness, the mines were called the Brightmines, named by the original surveyors who found veins of coal and copper running deep under the foothills — and something older they did not have a word for. Three generations of Eldoria\'s prosperity came from those tunnels. The miners carved deep. There are chambers in the lower levels that have not been revisited in forty years. The village has not spoken the old name aloud since the darkness began.',
+        source: 'Elder Maren',
+    },
+    seal_weakening: {
+        key:    'seal_weakening',
+        title:  'The Weakening Seal',
+        body:   'The elven seal on the Hollow King requires maintenance — periodic renewal by someone who understands the old forms. The knowledge has not been passed down. No one in Eldoria has it. Veyla does, though she will not say so directly. The madness event three weeks ago — the seven who went in, the one who returned — was not the seal breaking. It was the seal cracking slightly open, like a door held shut by a failing latch. The difference is important.',
+        source: 'Veyla',
+    },
+    henrick_fate: {
+        key:    'henrick_fate',
+        title:  "Daran's Brother",
+        body:   'Henrick Vale went into the mines three months ago as part of an informal search party — men with torches and the particular determination of people who need to do something. He was the last to enter the lower chambers before the group turned back. They returned. He did not. His iron ring — stamped with the forge sigil, the same mark Daran uses — is somewhere in the lower levels. Daran does not speak of this unprompted.',
+        source: 'Daran',
+    },
+    village_founders: {
+        key:    'village_founders',
+        title:  'The Founders of Eldoria',
+        body:   'Eldoria was founded four generations ago by twelve families who followed a surveying party south from the mountains, drawn by reports of coal and copper deposits in the foothills. The miners who first went below expected ore. They found other things as well, though the old records are vague on what. Maren\'s family was among the twelve. The founders\' names are carved into the stone of the central well, though two of the families left early and are no longer spoken of.',
+        source: 'Elder Maren',
+    },
+    veyla_history: {
+        key:    'veyla_history',
+        title:  'The Wandering Seer',
+        body:   "Veyla arrived in Eldoria eight months ago and has not explained why she is still here. The inn's oldest guest ledger — kept behind the bar, rarely consulted — contains an entry in similar handwriting from eighty years prior. When asked directly, she neither confirms nor denies it. She is not merely old. She is watching for something specific, and she appears to be watching for it here.",
+        source: 'Veyla',
+    },
+    darkness_nature: {
+        key:    'darkness_nature',
+        title:  'The Spreading Dark',
+        body:   "The darkness spreading from the mines is not darkness in the literal sense — it is absence. Light dims. Warmth drains. Thoughts scatter at the edges. It is the Hollow King's influence diffusing through the stone, the way water moves through rock given enough time. It affects animals first, which is why they fled months before anyone noticed. Then the sensitive. Then, eventually, everyone. The survivor rocking in the inn is not mad. He is depleted. There is a difference, and it matters for what comes next.",
+        source: 'Veyla',
+    },
+};
+window.LORE_ENTRIES = LORE_ENTRIES;
+
+// ═══════════════════════════════════════════════════════
+//  AMBIENT / ENCOUNTER / DISCOVERY LINES
+// ═══════════════════════════════════════════════════════
+const AMBIENT_LINES = {
+    guide: [
+        "Okay so — have you talked to Elder Maren yet?",
+        "The mines have been quiet today. That's — probably fine.",
+        "I've been timing myself running to the well and back. New record.",
+        "Did you notice Veyla moved to a different table at the inn again?",
+        "Right, so don't go south after dark. Just — don't.",
+        "I keep meaning to fix that sign by the well. Keep meaning to.",
+    ],
+    elder: [
+        "Edrea always said the mines had a voice. I'm starting to think she was right.",
+        "By the old stones. By the old stones.",
+        "Come by later if you want to talk.",
+        "I've been watching the south road. Nothing good comes from watching.",
+        "Sleep has been difficult. It is for all of us, I think.",
+    ],
+    blacksmith: [
+        "Hm.",
+        "Need something?",
+        "Iron doesn't ask questions.",
+        "...",
+        "Not now.",
+        "Henrick used to help here.",
+    ],
+    traveler: [
+        "You're still here. Interesting.",
+        "The light changes near the mines. You've noticed that.",
+        "Old stones remember everything.",
+        "I've been in worse places. Many worse.",
+        "Some doors don't open from the outside.",
+        "The deepest shafts weren't dug by the miners. Someone else started that work.",
+        "There's a cold that comes from below. Not weather. Something else.",
+    ],
+};
+// Snapshot for new-game reset — mutations from world events are reversed in startGame()
+const AMBIENT_LINES_DEFAULT = {
+    guide:      [...AMBIENT_LINES.guide],
+    elder:      [...AMBIENT_LINES.elder],
+    blacksmith: [...AMBIENT_LINES.blacksmith],
+    traveler:   [...AMBIENT_LINES.traveler],
+};
+
+const ENCOUNTER_LINES = {
+    shade: [
+        "The shadow detaches from the wall. It has eyes.",
+        "Something cold moves in the dark ahead.",
+        "The air pressure drops. You are not alone.",
+        "It makes no sound. That is somehow worse.",
+        "Between one blink and the next, it is in front of you.",
+    ],
+    lurker: [
+        "The ground vibrates. Then stops.",
+        "Three orange lights in the dark. Watching.",
+        "Something very heavy shifts in the stone ahead.",
+        "You smell copper and old rot.",
+        "It has been here a very long time.",
+    ],
+};
+
+const DISCOVERY_LINES = {
+    cave_pool:   "Dark water. Still. Something beneath the surface catches what little light reaches here.",
+    first_rubble:"Collapsed stone, old. Whatever caused this happened years ago at least.",
+    first_room:  "The passage opens. Larger than you expected. The ceiling is lost in darkness above.",
+    low_hp:      "You are bleeding. The mines don't care.",
+};
+
+let _discoveredFlavor = new Set();
 
 // ═══════════════════════════════════════════════════════
 //  MAP DEFINITIONS
@@ -880,9 +1002,11 @@ const MAPS = {
 MAPS.village.biomeData    = _villageBiomeData;
 MAPS.village.decorations  = _villageDecorations;
 MAPS.village.wornPaths    = _villageWornPaths;
+Game.MAPS = MAPS;
 
 // ── Rebuild dungeon with fresh procedural generation ────
 function rebuildDungeon() {
+    _discoveredFlavor.clear();
     const seed = Math.floor(Math.random() * 0xFFFFFF);
     const data = buildMineTiles(_rng(seed));
     const d = MAPS.dungeon_1;
@@ -894,7 +1018,6 @@ function rebuildDungeon() {
     d.items = [{ ...DUNGEON_ITEMS[0], x:data.itemPos.x, y:data.itemPos.y }];
     DUNGEON_NPCS[0].x = data.ghostPos.x;
     DUNGEON_NPCS[0].y = data.ghostPos.y;
-    DUNGEON_NPCS[0].history = [];
     d.enemies = data.enemySpawns.map((sp, i) => ({
         ...ENEMY_DEFS[sp.type],
         id: `enemy_${i}`,
@@ -1031,7 +1154,7 @@ window.addEventListener('resize', resizeCanvas);
 let moveAccum = 999;
 
 function updateMovement(dt) {
-    if (battleSystem.isActive() || transition.active || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused) { input.clearFrame(); return; }
+    if (battleSystem.isActive() || transition.active || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused || ui.codex) { input.clearFrame(); return; }
     const dirs = [
         { keys:['ArrowUp','w','W'],    dx:0,  dy:-1, f:'up'    },
         { keys:['ArrowDown','s','S'],  dx:0,  dy:1,  f:'down'  },
@@ -1146,6 +1269,15 @@ function changeMap(mapId, sx, sy) {
     toScene?.onEnter?.(fromId);
 
     Game.transition.active = false;
+
+    // Narrator: fire scene_enter after one render frame so the map is visible
+    const _narMapName = currentMap.name;
+    const _narMapType = currentMap.dark ? 'dungeon' : 'village';
+    setTimeout(() => {
+        if (typeof fireNarration === 'function') {
+            fireNarration('scene_enter', {map_name: _narMapName, map_type: _narMapType, activeWorldEvents: gs.activeWorldEvents || []});
+        }
+    }, 200);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -1190,8 +1322,13 @@ function updateEnemies(dt) {
 
         if (!en.aggroed) continue;
 
-        // Adjacent to player → start battle
-        if (dist <= 1) { battleSystem.start(en); return; }
+        // Adjacent to player → encounter flavor + start battle
+        if (dist <= 1) {
+            const _encPool = ENCOUNTER_LINES[en.type];
+            if (_encPool) window.queueNarration(_encPool[Math.floor(Math.random() * _encPool.length)]);
+            battleSystem.start(en);
+            return;
+        }
 
         // Move one step toward player
         let mx = 0, my = 0;
@@ -1206,6 +1343,93 @@ function updateEnemies(dt) {
 }
 
 function isAdjacent(nx,ny){return Math.abs(nx-player.x)+Math.abs(ny-player.y)===1;}
+
+// ─── Ambient NPC speech bubbles ─────────────────────────────────────────────
+const _AMB_IDLE_MS    = 7200;
+const _AMB_FADEIN_MS  = 300;
+const _AMB_HOLD_MS    = 4000;
+const _AMB_FADEOUT_MS = 500;
+
+function updateAmbient(dt) {
+    if (battleSystem.isActive() || transition.active || ui.loading || ui.paused) return;
+    if (!currentMap.npcs) return;
+    for (const npc of currentMap.npcs) {
+        if (npc.ghost) continue;
+        const pool = AMBIENT_LINES[npc.id];
+        if (!pool?.length) continue;
+        if (!npc._amb) npc._amb = { idx: 0, timer: _AMB_IDLE_MS - 2000, phase: 'idle', alpha: 0, text: '' };
+        const s = npc._amb;
+        const inRange   = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y) <= 3;
+        const suppressed = !inRange || ui.dialogue === npc;
+        if (suppressed) {
+            if (s.alpha > 0) { s.alpha = Math.max(0, s.alpha - dt / 150); if (s.alpha <= 0) s.phase = 'idle'; }
+            continue;
+        }
+        s.timer += dt;
+        if (s.phase === 'idle') {
+            if (s.timer >= _AMB_IDLE_MS) { s.timer = 0; s.text = pool[s.idx % pool.length]; s.idx = (s.idx + 1) % pool.length; s.phase = 'fadein'; }
+        } else if (s.phase === 'fadein') {
+            s.alpha = Math.min(1, s.timer / _AMB_FADEIN_MS);
+            if (s.timer >= _AMB_FADEIN_MS) { s.phase = 'hold'; s.timer = 0; }
+        } else if (s.phase === 'hold') {
+            if (s.timer >= _AMB_HOLD_MS) { s.phase = 'fadeout'; s.timer = 0; }
+        } else if (s.phase === 'fadeout') {
+            s.alpha = Math.max(0, 1 - s.timer / _AMB_FADEOUT_MS);
+            if (s.timer >= _AMB_FADEOUT_MS) { s.alpha = 0; s.phase = 'idle'; s.timer = 0; }
+        }
+    }
+}
+
+// ─── Dungeon discovery narration ─────────────────────────────────────────────
+function updateDiscovery() {
+    if (!currentMap || currentMap.id !== 'dungeon_1') return;
+    if (battleSystem.isActive() || transition.active || ui.loading || ui.paused) return;
+
+    if (!_discoveredFlavor.has('low_hp') && gs.hp > 0 && gs.hp / gs.maxHp < 0.25) {
+        _discoveredFlavor.add('low_hp');
+        window.queueNarration(DISCOVERY_LINES.low_hp);
+    }
+
+    const _adjTiles = [{dx:0,dy:-1},{dx:0,dy:1},{dx:-1,dy:0},{dx:1,dy:0}];
+
+    if (!_discoveredFlavor.has('cave_pool')) {
+        for (const d of _adjTiles) {
+            const tx = player.x + d.dx, ty = player.y + d.dy;
+            if (ty >= 0 && ty < currentMap.h && tx >= 0 && tx < currentMap.w &&
+                currentMap.tiles[ty][tx] === WA) {
+                _discoveredFlavor.add('cave_pool');
+                window.queueNarration(DISCOVERY_LINES.cave_pool);
+                break;
+            }
+        }
+    }
+
+    if (!_discoveredFlavor.has('first_room')) {
+        let openCount = 0;
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            if (dx === 0 && dy === 0) continue;
+            const tx = player.x + dx, ty = player.y + dy;
+            if (ty >= 0 && ty < currentMap.h && tx >= 0 && tx < currentMap.w &&
+                WALKABLE.has(currentMap.tiles[ty][tx])) openCount++;
+        }
+        if (openCount >= 14) {
+            _discoveredFlavor.add('first_room');
+            window.queueNarration(DISCOVERY_LINES.first_room);
+        }
+    }
+
+    if (!_discoveredFlavor.has('first_rubble') && _discoveredFlavor.has('first_room')) {
+        for (const d of _adjTiles) {
+            const tx = player.x + d.dx, ty = player.y + d.dy;
+            if (ty >= 0 && ty < currentMap.h && tx >= 0 && tx < currentMap.w &&
+                currentMap.tiles[ty][tx] === W) {
+                _discoveredFlavor.add('first_rubble');
+                window.queueNarration(DISCOVERY_LINES.first_rubble);
+                break;
+            }
+        }
+    }
+}
 
 // ═══════════════════════════════════════════════════════
 //  INTERACTION
@@ -1250,11 +1474,12 @@ function checkItemPickup() {
             const item=items.splice(i,1)[0];
             gs.inventory.push(item);
             showNotification(`Found: ${item.name}`,'item');
+            if (item.questComplete && typeof fireNarration === 'function') {
+                fireNarration('item_found', {item_name: item.name, item_type: item.id, location: currentMap.name});
+            }
             if(item.questComplete&&!gs.flags[item.questComplete]){
                 gs.flags[item.questComplete]=true;
-                const q=QUESTS.find(q=>q.flag_complete===item.questComplete);
-                if(q) setTimeout(()=>showNotification(`Quest Complete: ${q.title}`,'quest'),600);
-                updateQuestUI();
+                onQuestComplete(QUESTS.find(q=>q.flag_complete===item.questComplete));
             }
             updateInventoryUI();
         }
@@ -1407,12 +1632,18 @@ function resetWorldState() {
 
 function startGame(name,charClass) {
     gs.charName=name;gs.charClass=charClass;gs.flags={};gs.inventory=[];
+    gs.knownLore=[]; gs.unlockedAreas=['village','cursed_mines']; gs.reputation={guide:0,elder:0,blacksmith:0,traveler:0};
+    gs.activeWorldEvents = [];
+    Object.keys(AMBIENT_LINES_DEFAULT).forEach(k => { AMBIENT_LINES[k] = [...AMBIENT_LINES_DEFAULT[k]]; });
+    const _MOODS = ['neutral','tired','worried','distracted','hopeful'];
+    const _rnd   = () => _MOODS[Math.floor(Math.random() * _MOODS.length)];
+    gs.npcMoods  = { guide: _rnd(), elder: _rnd(), blacksmith: _rnd(), traveler: _rnd() };
+    gs.sessionId = crypto.randomUUID();
     invalidateCharCache(); // charClass → color changed; purge stale entries from any prior session
     const classMaxHp={Warrior:60,Rogue:45,Wizard:35,Cleric:55};
     gs.maxHp=classMaxHp[charClass]||50; gs.hp=gs.maxHp;
     gs.xp=0; gs.level=1;
     currentMap = Game.currentMap = MAPS.village;
-    [...VILLAGE_NPCS,...GUIDE_NPCS,...DUNGEON_NPCS,...ELDER_NPCS,...BLACKSMITH_NPCS,...VEYLA_NPCS].forEach(n=>n.history=[]);
     resetWorldState();
     rebuildDungeon(); // fresh procedurally generated mine every new game
     placeStarterWeapon(charClass);
@@ -1433,6 +1664,7 @@ function startGame(name,charClass) {
         console.assert(map.items.length === 0 || id === 'village',
             `[startGame] ${id}.items not empty after reset — check resetWorldState()`);
     }
+    [...GUIDE_NPCS,...ELDER_NPCS,...BLACKSMITH_NPCS,...VEYLA_NPCS,...DUNGEON_NPCS].forEach(n => { delete n._amb; });
     audio.startMusic();
     startLoop();
     // Black intro sequence — fades out after the cinematic lines

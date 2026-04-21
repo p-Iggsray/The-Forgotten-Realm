@@ -464,6 +464,14 @@ const VQ = (() => {
         Game.ctx.fillStyle = _cgGrd;
         Game.ctx.fillRect(0, 0, Game.cW, Game.cH);
 
+        // darkness_spreads: subtle 5% ambient darkening on outdoor/interior maps
+        if (!isDark && Game.gs?.activeWorldEvents?.includes('darkness_spreads')) {
+            Game.ctx.globalCompositeOperation = 'source-over';
+            Game.ctx.globalAlpha = 0.05;
+            Game.ctx.fillStyle = '#000000';
+            Game.ctx.fillRect(0, 0, Game.cW, Game.cH);
+        }
+
         Game.ctx.restore();
     }
 

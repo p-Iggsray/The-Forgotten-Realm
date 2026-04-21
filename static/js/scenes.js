@@ -13,8 +13,16 @@ const SCENES = {
         onEnter(from) {
             if (!gs.flags.quest_into_dark_complete) {
                 gs.flags.quest_into_dark_complete = true;
-                setTimeout(() => showNotification('Quest Complete: Into the Dark', 'quest'), 800);
-                updateQuestUI();
+                onQuestComplete(Game.QUESTS.find(q => q.flag_complete === 'quest_into_dark_complete'));
+            }
+            if (Game.gs?.activeWorldEvents?.includes('seal_weakening')) {
+                const BONUS = 0.10;
+                (Game.MAPS?.dungeon_1?.enemies || []).forEach(e => {
+                    if (e.alive && !e._sealBoosted) {
+                        e.hp = Math.round(e.hp * (1 + BONUS));
+                        e._sealBoosted = true;
+                    }
+                });
             }
         },
         onExit(to) {}

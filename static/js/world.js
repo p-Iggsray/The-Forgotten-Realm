@@ -23,6 +23,12 @@
         charName: 'Hero', charClass: 'Warrior',
         flags: {}, inventory: [],
         hp: 50, maxHp: 50, xp: 0, level: 1,
+        knownLore:     [],
+        unlockedAreas: [],
+        reputation:    {},
+        npcMoods:           {},
+        activeWorldEvents:  [],
+        sessionId:          '',
     };
 
     Game.cam = { x: 0, y: 0 };

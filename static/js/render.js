@@ -2230,6 +2230,61 @@ function _buildChestFrame(isOpen) {
     return off;
 }
 
+function drawAmbientBubbles() {
+    if (!currentMap.npcs) return;
+    for (const npc of currentMap.npcs) {
+        const s = npc._amb;
+        if (!s || s.alpha <= 0 || !s.text) continue;
+        const sx = Math.round(npc.x * TS - cam.x);
+        const sy = Math.round(npc.y * TS - cam.y);
+        if (sx < -TS * 3 || sx > cW + TS * 3 || sy < -TS * 3 || sy > cH + TS * 3) continue;
+        _drawSpeechBubble(sx + TS / 2, sy, s.text, s.alpha);
+    }
+}
+
+function _drawSpeechBubble(cx, sy, text, alpha) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const fontSize = Math.max(10, Math.round(TS * 0.22));
+    ctx.font = `italic ${fontSize}px sans-serif`;
+    const textW  = Math.min(ctx.measureText(text).width, 220);
+    const padX   = 8, padY = 5;
+    const bw     = textW + padX * 2;
+    const bh     = fontSize + padY * 2;
+    const tipH   = 6;
+    const bx     = cx - bw / 2;
+    // Bottom of bubble body sits 30px above the NPC name label (sy-23)
+    const bodyBottom = sy - 30;
+    const bodyTop    = bodyBottom - bh;
+    const r = 4;
+
+    ctx.fillStyle   = 'rgba(8,4,2,0.90)';
+    ctx.strokeStyle = 'rgba(90,58,24,0.75)';
+    ctx.lineWidth   = 1;
+
+    ctx.beginPath();
+    ctx.moveTo(bx + r, bodyTop);
+    ctx.lineTo(bx + bw - r, bodyTop);
+    ctx.quadraticCurveTo(bx + bw, bodyTop, bx + bw, bodyTop + r);
+    ctx.lineTo(bx + bw, bodyBottom - r);
+    ctx.quadraticCurveTo(bx + bw, bodyBottom, bx + bw - r, bodyBottom);
+    ctx.lineTo(cx + 5, bodyBottom);
+    ctx.lineTo(cx, bodyBottom + tipH);
+    ctx.lineTo(cx - 5, bodyBottom);
+    ctx.lineTo(bx + r, bodyBottom);
+    ctx.quadraticCurveTo(bx, bodyBottom, bx, bodyBottom - r);
+    ctx.lineTo(bx, bodyTop + r);
+    ctx.quadraticCurveTo(bx, bodyTop, bx + r, bodyTop);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle   = '#c8b890';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, cx, bodyTop + bh / 2, 220);
+    ctx.restore();
+}
+
 function drawItem(item, sx, sy) {
     const bob = Math.sin(timeMs * 0.002 + sx * 0.08) * 3;
     const isOpen = Math.abs(player.x - item.x) <= 1 && Math.abs(player.y - item.y) <= 1;
@@ -2326,6 +2381,54 @@ function ensureLightCanvas() {
         lightCtx2=lightCanvas.getContext('2d');
     }
     _buildLightDiscs();
+}
+
+function renderWorldEventOverlays() {
+    const activeEvents = Game.gs.activeWorldEvents;
+    if (!activeEvents?.length && !Game._sealPulseEnd && !Game._torchDimEnd) return;
+    const tMs = timeMs;
+
+    // darkness_spreads: persistent mine entrance tint (village map only)
+    if (activeEvents?.includes('darkness_spreads') && currentMap.id === 'village') {
+        ctx.save();
+        ctx.fillStyle = 'rgba(20, 0, 30, 0.15)';
+        ctx.fillRect(Math.round(21 * TS - cam.x), Math.round(34 * TS - cam.y), TS * 2, TS);
+        ctx.restore();
+    }
+
+    // seal_weakening: one-time cold pulse on mine entrance (village map)
+    if (Game._sealPulseEnd && tMs < Game._sealPulseEnd && currentMap.id === 'village') {
+        const progress = 1 - (Game._sealPulseEnd - tMs) / 2000;
+        const alpha = 0.3 * Math.sin(progress * Math.PI);
+        if (alpha > 0.001) {
+            ctx.save();
+            ctx.fillStyle = `rgba(150, 200, 255, ${alpha})`;
+            ctx.fillRect(Math.round(21 * TS - cam.x), Math.round(34 * TS - cam.y), TS * 2, TS);
+            ctx.restore();
+        }
+    } else if (Game._sealPulseEnd && tMs >= Game._sealPulseEnd) {
+        Game._sealPulseEnd = 0;
+    }
+
+    // seal_weakening: dungeon shimmer (dark maps only)
+    if (activeEvents?.includes('seal_weakening') && currentMap.dark) {
+        const alpha = 0.01 + 0.01 * Math.sin(tMs * 0.0002);
+        ctx.save();
+        ctx.fillStyle = `rgba(80, 120, 200, ${alpha})`;
+        ctx.fillRect(0, 0, cW, cH);
+        ctx.restore();
+    }
+
+    // village_alert: torch snuff (brief dim, village map)
+    if (Game._torchDimEnd && tMs < Game._torchDimEnd && currentMap.id === 'village') {
+        const alpha = 0.12 * ((Game._torchDimEnd - tMs) / 1500);
+        ctx.save();
+        ctx.fillStyle = `rgba(0, 0, 0, ${alpha})`;
+        ctx.fillRect(0, 0, cW, cH);
+        ctx.restore();
+    } else if (Game._torchDimEnd && tMs >= Game._torchDimEnd) {
+        Game._torchDimEnd = 0;
+    }
 }
 
 function renderLighting() {
@@ -2608,6 +2711,7 @@ function render() {
         if (sx>-TS*2&&sx<cW+TS&&sy>-TS*2&&sy<cH+TS)
             drawCharacter(sx,sy,npc.color,'down',npc.name,false,isAdjacent(npc.x,npc.y),npc.ghost,0,false,npc.id);
     }
+    drawAmbientBubbles();
     if (currentMap.enemies) {
         for (const en of currentMap.enemies) {
             if (!en.alive) continue;
@@ -2626,6 +2730,7 @@ function render() {
     renderLighting();   // dynamic darkness + torch light + warm color bleed
     renderVignette();   // corner vignette in interiors
     if (typeof VQ !== 'undefined') VQ.renderOutdoorTorchGlow(); // torch warm halo on lit maps (guarded, no-op during dark battle)
+    renderWorldEventOverlays();
     if (battleSystem.isActive()) battleSystem.render(ctx);
     else updateHintBar();
     // Scanlines + color grade always last — applies correctly over both overworld and battle
