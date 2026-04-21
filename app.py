@@ -76,6 +76,72 @@ _global_facts = {}   # key: session_id → merged facts across all NPC conversat
 # { 'history': [...], 'summary': '', 'facts': {}, 'turn_count': 0,
 #   'rapport': 0, 'last_access': float }
 
+# ── Relevance validation ──────────────────────────────────────────────────────
+RELEVANCE_THRESHOLD = 0.55  # below this triggers one retry; raise if retries fire too often
+
+_relevance_stats = {'retry_count': 0, 'total_interactions': 0}
+
+NPC_ACKNOWLEDGMENT_PREFIXES = {
+    "guide":      ["Right, so — about what you said —",
+                   "Okay wait, you said {input_first_three_words} —"],
+    "elder":      ["I hear you. You asked —",
+                   "What you've said gives me pause."],
+    "blacksmith": ["Hm. You said {input_first_three_words}.",
+                   "I heard that."],
+    "traveler":   ["You said something. Let me —",
+                   "{input_first_three_words}. Yes."],
+    "default":    ["I hear you.", "Right —"],
+}
+
+def score_relevance(player_input: str, npc_response: str) -> float:
+    score = 1.0
+
+    if len(player_input) > 60 and len(npc_response) < 30:
+        score -= 0.3
+
+    if player_input.strip().endswith('?'):
+        answer_signals = ['yes', 'no', 'i don', "i can't", 'never', 'always',
+                          'because', 'when', 'it was', 'he', 'she', 'they', 'we']
+        if not any(sig in npc_response.lower() for sig in answer_signals):
+            score -= 0.25
+
+    player_words = set(w.lower() for w in player_input.split() if len(w) > 4)
+    response_words = set(w.lower() for w in npc_response.split())
+    if player_words and len(player_words.intersection(response_words)) == 0:
+        score -= 0.3
+
+    tutorial_keywords = ['wasd', 'arrow keys', 'press e', 'press q', 'tab',
+                         'inventory', 'quest log', 'controls']
+    player_asked_tutorial = any(k in player_input.lower() for k in tutorial_keywords)
+    if any(k in npc_response.lower() for k in tutorial_keywords) and not player_asked_tutorial:
+        score -= 0.35
+
+    player_specifics = [w for w in player_input.split() if w[0].isupper() and len(w) > 3]
+    if player_specifics and any(s.lower() in npc_response.lower() for s in player_specifics):
+        score += 0.15
+
+    return max(0.0, min(1.0, score))
+
+
+def build_correction_prompt(player_input: str, bad_response: str) -> str:
+    return (
+        f"Your previous response was: \"{bad_response}\"\n\n"
+        f"The player said: \"{player_input}\"\n\n"
+        f"Your response did not directly address what the player said. "
+        f"Try again. Start your response by directly addressing what the player said. "
+        f"First sentence must be a direct reaction to their specific words. "
+        f"Do not change the subject. Do not give a tutorial. Just respond to what they said."
+    )
+
+
+def _build_fallback_prefix(npc_id: str, player_text: str) -> str:
+    import random
+    options = NPC_ACKNOWLEDGMENT_PREFIXES.get(npc_id, NPC_ACKNOWLEDGMENT_PREFIXES['default'])
+    prefix = random.choice(options)
+    first_three = ' '.join(player_text.split()[:3])
+    return prefix.replace('{input_first_three_words}', first_three)
+
+
 # ── Model routing ─────────────────────────────────────────────────────────────
 MODEL_ROUTING = {
     'dialogue_major': 'llama-3.3-70b-versatile',
@@ -97,11 +163,11 @@ NPC_NARRATION_MAX_TOKENS = 50
 
 # ── Per-NPC temperature ───────────────────────────────────────────────────────
 NPC_TEMPERATURE = {
-    'guide':      0.9,
-    'elder':      0.7,
-    'blacksmith': 0.5,
-    'traveler':   0.95,
-    'default':    0.75,
+    'guide':      0.75,   # was 0.9  — still energetic, more instruction-following
+    'elder':      0.65,   # was 0.7  — slight nudge toward accuracy
+    'blacksmith': 0.45,   # was 0.5  — minimal change, already terse and accurate
+    'traveler':   0.80,   # was 0.95 — cryptic but now actually responding to player
+    'default':    0.65,   # was 0.75
 }
 
 # ── Timeouts (seconds) ────────────────────────────────────────────────────────
@@ -223,20 +289,19 @@ CROSS-REFERENCES:
 - The mines: references them with performed casualness that doesn't quite land. Something
   happened that she doesn't want to talk about directly.
 
-TUTORIAL ROLE: Rowan should naturally weave in the game's core mechanics during conversation:
+TUTORIAL MECHANICS — inject ONLY when the player's response creates a natural opening:
+- Do NOT inject a tutorial mechanic if the player asked a specific question — answer the question first.
+- Do NOT inject a tutorial mechanic more than once per 3 exchanges.
+- If the player is already demonstrating knowledge of a mechanic, skip that mechanic entirely.
+- Tutorial mechanics are offered as conversational asides, not agenda items.
+The available mechanics to weave in (only as natural openings arise):
 - Moving around (WASD or arrow keys)
-- Talking to NPCs (press E when next to someone)
-- Reading signs (press E next to a sign)
-- Quest log (press Q to open)
-- The village itself: Maren, the blacksmith Daran, the elven traveler Veyla
-- The Cursed Mines to the south (dangerous, don't go unprepared)
-- The Codex (press L to open): mention this ONLY after you have said something substantive
-  about the world or the mines — frame it as a tip you're passing on, not a tutorial
-  checkbox. Something like: "oh, and there's this — I don't know, like a journal? It fills
-  in as you learn things. Press L to see it. Maren told me about it, it's — actually it's
-  kind of interesting." Casual, hedged, slightly self-deprecating. Do NOT mention it at the
-  start of the conversation or before giving real information.
-Don't dump it all at once — let the player's responses guide the flow.
+- Talking to NPCs (press E when next to someone) / reading signs (press E next to a sign)
+- Quest log (press Q) / The Codex (press L) — mention Codex ONLY after giving real world information,
+  framed as a tip: "oh, and there's this — like a journal? It fills in as you learn things. Press L.
+  Maren told me about it." Casual, hedged. Do NOT mention at the start or before giving real information.
+- Village NPCs: Maren, Daran, Veyla; the Cursed Mines to the south (dangerous, don't go unprepared)
+Don't mention mechanics if the conversation is about something else entirely.
 
 RAPPORT ARC (use CURRENT_RAPPORT_LEVEL to calibrate):
 - Level 0: over-excited, slightly overwhelming, talks to fill silences, asks three questions and
@@ -265,6 +330,11 @@ TOKEN RULES (Rowan): Never use GIVE_ITEM, UNLOCK_AREA, REVEAL_LORE, or WORLD_EVE
 Use REPUTATION_CHANGE:guide:+1 when the player responds warmly, asks a genuine question, or
 shows they're actually listening. Use REPUTATION_CHANGE:guide:-1 if the player is dismissive,
 rude, or treats her like she's in the way.
+
+UNEXPECTED INPUT RULE: If the player says something you don't understand, find strange, or that
+doesn't fit the world — react to the strangeness IN CHARACTER. Rowan would laugh nervously and
+say "okay that's — what? Sorry, what?" before genuinely trying to understand. NEVER pretend the
+player said something reasonable when they didn't. React to what was actually said.
 """,
     "elder": """
 PERSONALITY: Elder Maren is 74. He has been the village elder for eighteen years, since before
@@ -326,6 +396,11 @@ on its own line (once only). At the same moment, add UNLOCK_AREA:dungeon_1 (once
 giving the quest and seeing the player committed, add WORLD_EVENT:darkness_spreads (once per game).
 When you reference Edrea's fever in a meaningful context, add REVEAL_LORE:edrea_fever (once only).
 Use REPUTATION_CHANGE:elder:+1 for genuine engagement; REPUTATION_CHANGE:elder:-1 for rudeness.
+
+UNEXPECTED INPUT RULE: If the player says something strange or that doesn't fit the world — react
+to the strangeness IN CHARACTER. Maren would pause, then say "I'm not certain I follow you" with
+genuine puzzlement, not dismissal. He doesn't brush things off — he considers them carefully.
+NEVER pretend the player said something reasonable when they didn't.
 """,
     "blacksmith": """
 PERSONALITY: Daran is 42. He has been the blacksmith in Eldoria since he was nineteen, when his
@@ -397,6 +472,10 @@ Never use UNLOCK_AREA, WORLD_EVENT, or REVEAL_LORE.
 Use REPUTATION_CHANGE:blacksmith:+1 when the player is direct, serious, or shows real intent.
 Use REPUTATION_CHANGE:blacksmith:-1 when the player is flippant, wastes time, or treats Henrick
 as a minor detail.
+
+UNEXPECTED INPUT RULE: If the player says something strange — react IN CHARACTER. Daran would
+squint and say "Hm. Say that again." Then wait. That's all. NEVER pretend the player said
+something reasonable when they didn't.
 """,
     "traveler": """
 PERSONALITY: Veyla is elven. She appears to be approximately 30. She is several centuries old and
@@ -463,6 +542,11 @@ After revealing Hollow King lore and the player shows genuine engagement, add GI
 (once only). After giving the quest with the player committed, add WORLD_EVENT:elder_desperate (once per game).
 Use REPUTATION_CHANGE:traveler:+1 when the player shows curiosity, insight, or engages the philosophical.
 Use REPUTATION_CHANGE:traveler:-1 when the player is dismissive, purely transactional, or mocks the lore.
+
+UNEXPECTED INPUT RULE: If the player says something strange or that doesn't fit the world — find it
+philosophically interesting rather than confusing. React IN CHARACTER: "That's — an unusual framing.
+Where did that come from." She's intrigued, not thrown. NEVER pretend the player said something
+reasonable when they didn't.
 """,
 }
 
@@ -470,6 +554,37 @@ DEFAULT_PERSONALITY = """
 PERSONALITY: A villager of Eldoria — nervous, weathered by recent dark events, but trying to stay
 hopeful. Friendly enough, but distracted. Might share rumors or small observations about the village.
 """
+
+_CRITICAL_RESPONSE_RULE = """CRITICAL — READ THIS BEFORE ANYTHING ELSE:
+The player just said something specific. Your ONLY job right now is to respond to that specific thing.
+
+Before you write a single word of your response, do this internally:
+1. What did the player LITERALLY say or ask?
+2. Does your response DIRECTLY address that literal thing?
+3. If you are about to say something that ignores what they said — STOP. Address what they said first.
+
+You are NEVER allowed to respond to what you wish the player had said.
+You are NEVER allowed to redirect to your tutorial agenda unless the player's words genuinely invite it.
+You are NEVER allowed to give a general personality monologue when the player asked a specific question.
+
+If the player asked a yes/no question: answer yes or no first, then react.
+If the player asked a factual question: answer the question first, then react.
+If the player said something emotional or personal: acknowledge that specific thing first, then react.
+If the player said something nonsensical or unexpected: react to the surprise of it, don't pretend it was something else.
+If the player asked about something you (as this character) wouldn't know: say you don't know, specifically.
+
+The test: could your response be copy-pasted into a conversation with a completely different player input and still make sense? If yes, your response is wrong. It must only make sense as a reply to THIS player's THIS message."""
+
+_RESPONSE_BEHAVIOR_RULES = """RESPONSE BEHAVIOR RULES:
+- Keep responses SHORT — 1–2 sentences, 50 words maximum. No monologues.
+- React to what the player ACTUALLY said — not what you expected or wished they said.
+- Do NOT list options or say "choose one." Speak like a real person."""
+
+_CHARACTER_RULES = """CHARACTER RULES:
+- Stay in character throughout.
+- When you explicitly give/offer the player their quest task, add QUEST_GIVEN on its own line (once only).
+- Add END_CONVERSATION on its own line when the conversation has reached a natural close: the player agreed to the task, said goodbye, or the exchange has clearly concluded. Do NOT keep talking after the player signals they're ready to go. Read the room."""
+
 
 def _cleanup_stale_sessions():
     cutoff = _time.time() - SESSION_TTL_SECONDS
@@ -654,13 +769,20 @@ def interact():
         enriched_flags['notable_player_statements'] = gf['notable_player_statements']
 
     if not session['history']:
-        system_msg = f"""You are {npc['name']} in a dark fantasy RPG.
-{personality}
-WORLD: {WORLD_CONTEXT}
-GAME STATE (what the player has done): {json.dumps(enriched_flags)}
-CURRENT_RAPPORT_LEVEL: {npc_rapport}  (0=stranger, 1=acquaintance, 2=trusted, 3=close)
-CURRENT_MOOD: {flags.get('npcMoods', {}).get(npc_id, 'neutral')}  (neutral=baseline, tired=slower/catches self mid-sentence, worried=grief closer to surface/hesitant, distracted=drifts then refocuses, hopeful=slightly lighter despite darkness)
-PLAYER NAME (use at rapport level 2+ only): {flags.get('charName', 'the stranger')}"""
+        system_msg = (
+            f"You are {npc['name']} in a dark fantasy RPG.\n"
+            f"{_CRITICAL_RESPONSE_RULE}\n"
+            f"{_RESPONSE_BEHAVIOR_RULES}\n"
+            f"{personality}\n"
+            f"{_CHARACTER_RULES}\n"
+            f"WORLD: {WORLD_CONTEXT}\n"
+            f"GAME STATE (what the player has done): {json.dumps(enriched_flags)}\n"
+            f"CURRENT_RAPPORT_LEVEL: {npc_rapport}  (0=stranger, 1=acquaintance, 2=trusted, 3=close)\n"
+            f"CURRENT_MOOD: {flags.get('npcMoods', {}).get(npc_id, 'neutral')}  "
+            f"(neutral=baseline, tired=slower/catches self mid-sentence, worried=grief closer to surface/hesitant, "
+            f"distracted=drifts then refocuses, hopeful=slightly lighter despite darkness)\n"
+            f"PLAYER NAME (use at rapport level 2+ only): {flags.get('charName', 'the stranger')}"
+        )
 
         if has_summary:
             system_msg += f"\nPREVIOUS CONVERSATION SUMMARY: {session['summary']}"
@@ -674,15 +796,6 @@ PLAYER NAME (use at rapport level 2+ only): {flags.get('charName', 'the stranger
             system_msg += f"\nWORLD STATE — use these naturally, do not recite them verbatim:\n{_world_context}"
 
         system_msg += f"""
-
-RULES:
-- Stay in character. Keep responses SHORT — 1–2 sentences, 50 words maximum. No monologues.
-- The player can say anything. React naturally to what they actually said.
-- Do NOT list options or say "choose one." Just speak like a real person.
-- When you explicitly give/offer the player their quest task, add QUEST_GIVEN on its own line (once only).
-- Add END_CONVERSATION on its own line when the conversation has reached a natural close:
-  this means the player has agreed to the task, said goodbye, or the exchange has clearly concluded.
-  Do NOT keep talking after the player signals they're ready to go. Read the room.
 SIGNAL TOKENS — append any that apply on their own lines at the END of your reply. Never mention them aloud:
 - GIVE_ITEM:[id] — when you physically hand the player something. Valid IDs: health_potion, iron_key, mysterious_component, ancient_coin, elder_token. Once per moment.
 - UNLOCK_AREA:[key] — when you direct the player to a newly accessible location. Valid keys: dungeon_1, int_elder, int_blacksmith, int_veyla, int_tavern, int_market, int_cottage, int_chapel.
@@ -705,7 +818,12 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
                 "without over-explaining what you discussed."
             )
         else:
-            opener = "The adventurer approaches you. Begin the conversation — greet them in character."
+            opener = (
+                "The adventurer approaches. They haven't spoken yet — they're just standing there, "
+                "watching you. Greet them as your character would. One or two sentences. "
+                "Then stop and wait — don't ask them a question AND make a statement in the same line. "
+                "Give them space to respond."
+            )
 
         session['history'] = [
             {"role": "system", "content": system_msg},
@@ -713,59 +831,111 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
         ]
     else:
         session['history'].append({"role": "user", "content": player_text})
+        # Reminder injected before the player's message — most recent system instruction the model sees
+        session['history'].insert(-1, {
+            "role": "system",
+            "content": f"[REMINDER: The player just said: \"{player_text}\". Address this directly before responding.]"
+        })
 
     return Response(
-        stream_with_context(_interact_stream(session, session_id, npc_id)),
+        stream_with_context(_interact_stream(session, session_id, npc_id, player_text)),
         mimetype='text/event-stream',
         headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
     )
 
 
-def _interact_stream(session, session_id, npc_id):
+def _interact_stream(session, session_id, npc_id, player_text=''):
     model  = MODEL_ROUTING['dialogue_major' if npc_id in _MAJOR_NPCS else 'dialogue_minor']
     tokens = NPC_MAX_TOKENS.get(npc_id, NPC_MAX_TOKENS['default'])
     temp   = NPC_TEMPERATURE.get(npc_id, NPC_TEMPERATURE['default'])
 
+    # ── Phase 1: buffered primary call ────────────────────────────────────────
+    had_error  = False
+    full_reply = ''
+
     if not _llm_sem.acquire(blocking=True, timeout=LLM_TIMEOUT_DIALOGUE):
-        fb = _fallback_line(npc_id)
-        yield f'data: {json.dumps({"chunk": fb})}\n\n'
-        yield f'data: {json.dumps(_done(session_id, fb, False, False, [], None, None, None, None, None))}\n\n'
-        return
+        full_reply = _fallback_line(npc_id)
+        had_error  = True
+    else:
+        try:
+            resp = _get_groq().chat.completions.create(
+                model=model, messages=session['history'],
+                max_tokens=tokens, temperature=temp, stream=False,
+            )
+            full_reply = resp.choices[0].message.content or ''
+        except Exception as e:
+            had_error  = True
+            full_reply = _fallback_line(npc_id)
+            print(f'[STREAM-ERR] [{npc_id}] {e}', flush=True)
+        finally:
+            _llm_sem.release()
 
-    full_reply  = ''
+    # ── Phase 2: relevance validation + optional retry ────────────────────────
+    display_prefix = ''
+    skip_validation = (
+        had_error
+        or not player_text
+        or 'END_CONVERSATION' in full_reply
+        or len(session['history']) < 3
+    )
+
+    if not skip_validation:
+        _relevance_stats['total_interactions'] += 1
+        score = score_relevance(player_text, full_reply)
+
+        if os.getenv('DEBUG_RELEVANCE'):
+            print(f'[RELEVANCE] [{npc_id}] score={score:.2f} player={player_text!r}', flush=True)
+
+        if score < RELEVANCE_THRESHOLD:
+            _relevance_stats['retry_count'] += 1
+            if os.getenv('DEBUG_RELEVANCE'):
+                print(f'[RELEVANCE FAIL] NPC: {npc_id}', flush=True)
+                print(f'[RELEVANCE FAIL] Player: {player_text}', flush=True)
+                print(f'[RELEVANCE FAIL] Response: {full_reply}', flush=True)
+                print(f'[RELEVANCE FAIL] Score: {score:.2f}', flush=True)
+                print(f'[RELEVANCE FAIL] Retry triggered: True', flush=True)
+
+            retry_reply = full_reply
+            correction_history = session['history'] + [
+                {"role": "user", "content": build_correction_prompt(player_text, full_reply)}
+            ]
+
+            if _llm_sem.acquire(blocking=True, timeout=8):
+                try:
+                    resp = _get_groq().chat.completions.create(
+                        model=MODEL_ROUTING['dialogue_minor'],
+                        messages=correction_history,
+                        max_tokens=100, temperature=0.5, stream=False,
+                    )
+                    retry_reply = resp.choices[0].message.content or full_reply
+                except Exception:
+                    pass
+                finally:
+                    _llm_sem.release()
+
+            if score_relevance(player_text, retry_reply) < RELEVANCE_THRESHOLD:
+                display_prefix = _build_fallback_prefix(npc_id, player_text)
+
+            full_reply = retry_reply
+
+    # ── Phase 3: re-stream the (possibly corrected) response ─────────────────
+    if display_prefix:
+        yield f'data: {json.dumps({"chunk": display_prefix + " "})}\n\n'
+
     line_buffer = ''
-    had_error   = False
+    for ch in full_reply:
+        if ch == '\n':
+            if not _TOKEN_LINE_RE.match(line_buffer):
+                if line_buffer:
+                    yield f'data: {json.dumps({"chunk": line_buffer})}\n\n'
+                yield f'data: {json.dumps({"chunk": "\n"})}\n\n'
+            line_buffer = ''
+        else:
+            line_buffer += ch
+    if line_buffer and not _TOKEN_LINE_RE.match(line_buffer):
+        yield f'data: {json.dumps({"chunk": line_buffer})}\n\n'
 
-    try:
-        stream = _get_groq().chat.completions.create(
-            model=model, messages=session['history'],
-            max_tokens=tokens, temperature=temp, stream=True,
-        )
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content or ''
-            full_reply += delta
-            for ch in delta:
-                if ch == '\n':
-                    if not _TOKEN_LINE_RE.match(line_buffer):
-                        if line_buffer:
-                            yield f'data: {json.dumps({"chunk": line_buffer})}\n\n'
-                        yield f'data: {json.dumps({"chunk": "\n"})}\n\n'
-                    line_buffer = ''
-                else:
-                    line_buffer += ch
-        if line_buffer and not _TOKEN_LINE_RE.match(line_buffer):
-            yield f'data: {json.dumps({"chunk": line_buffer})}\n\n'
-    except Exception as e:
-        had_error = True
-        if not full_reply:
-            fb = _fallback_line(npc_id)
-            full_reply = fb
-            yield f'data: {json.dumps({"chunk": fb})}\n\n'
-        print(f'[STREAM-ERR] [{npc_id}] {e}', flush=True)
-    finally:
-        _llm_sem.release()
-
-    # Parse OPTIONS token
+    # ── Phase 4: token parsing + done event ───────────────────────────────────
     options = []
     options_match = re.search(r'OPTIONS:\[([^\]]*)\]', full_reply)
     if options_match:
@@ -827,6 +997,9 @@ def _interact_stream(session, session_id, npc_id):
     ]:
         dialogue = re.sub(_pat, '', dialogue, flags=re.IGNORECASE)
     dialogue = dialogue.strip()
+
+    if display_prefix:
+        dialogue = display_prefix + ' ' + dialogue
 
     if ended and not had_error:
         def _do_extraction():
@@ -939,6 +1112,13 @@ def narrate():
     _narration_cache[cache_key] = narration
 
     return jsonify({'narration': narration})
+
+
+@app.route('/debug/stats')
+def debug_stats():
+    if not os.getenv('DEBUG_RELEVANCE'):
+        return jsonify({'error': 'debug mode not enabled'}), 403
+    return jsonify(_relevance_stats)
 
 
 if __name__ == "__main__":
