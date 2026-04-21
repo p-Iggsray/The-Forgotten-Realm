@@ -404,6 +404,19 @@ html, body {
 
 #hud-right { display: flex; gap: 8px; align-items: center; }
 
+/* Codex hint — greyed until first lore entry */
+#hud-codex-hint { transition: opacity 0.3s ease; }
+#hud-codex-hint.hud-codex-inactive { opacity: 0.4; }
+
+@keyframes codexHintPulse {
+    0%   { opacity: 1; }
+    40%  { opacity: 0.45; }
+    100% { opacity: 1; }
+}
+#hud-codex-hint.hud-codex-pulse {
+    animation: codexHintPulse 600ms ease-in-out 1;
+}
+
 .hud-btn {
     background: rgba(60,30,10,0.4); border: 1px solid #3a2010; border-radius: 3px;
     color: #7a6050; font-size: 0.8rem; padding: 4px 10px;

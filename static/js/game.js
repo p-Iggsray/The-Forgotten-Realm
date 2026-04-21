@@ -22,7 +22,10 @@ const canvas = document.getElementById('game-canvas');
 const TILE               = Game.TILE;
 const WALKABLE           = Game.WALKABLE;
 const WORLD_ITEM_PLACEABLE = Game.WORLD_ITEM_PLACEABLE;
-const WEAPON_SEARCH_RADIUS = Game.WEAPON_SEARCH_RADIUS;
+const WEAPON_SEARCH_RADIUS       = Game.WEAPON_SEARCH_RADIUS;
+const WEAPON_MIN_PLAYER_DISTANCE = Game.WEAPON_MIN_PLAYER_DISTANCE;
+const WEAPON_RING_START_ANGLES   = Game.WEAPON_RING_START_ANGLES;
+const DEBUG_PLACEMENT            = window.location.hostname === 'localhost';
 const MINIMAP_COLORS     = Game.MINIMAP_COLORS;
 const ANIMATED_TILES     = Game.ANIMATED_TILES;
 
@@ -1551,18 +1554,24 @@ const STARTER_WEAPONS = {
     Cleric:  { name:'Holy Mace',     icon:'🔱',  color:'#e8c060', desc:'Blessed by the Old Gods.'             },
 };
 
-function findValidItemTile(map, cx, cy) {
-    for (let r = 0; r <= WEAPON_SEARCH_RADIUS; r++) {
+function findValidItemTile(map, cx, cy, minRadius = 0) {
+    const angle = WEAPON_RING_START_ANGLES[Math.floor(Math.random() * WEAPON_RING_START_ANGLES.length)];
+    for (let r = Math.max(1, minRadius); r <= WEAPON_SEARCH_RADIUS; r++) {
+        const ring = [];
         for (let dy = -r; dy <= r; dy++) {
             for (let dx = -r; dx <= r; dx++) {
-                if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-                const tx = cx + dx, ty = cy + dy;
-                if (tx < 0 || tx >= map.w || ty < 0 || ty >= map.h) continue;
-                if (!WORLD_ITEM_PLACEABLE.has(map.tiles[ty]?.[tx])) continue;
-                if (map.npcs.some(n => n.x === tx && n.y === ty)) continue;
-                if (map.items.some(i => i.x === tx && i.y === ty)) continue;
-                return { x: tx, y: ty };
+                if (Math.max(Math.abs(dx), Math.abs(dy)) === r) ring.push([dx, dy]);
             }
+        }
+        const shift = Math.round((angle / 360) * ring.length) % ring.length;
+        const rotated = [...ring.slice(shift), ...ring.slice(0, shift)];
+        for (const [dx, dy] of rotated) {
+            const tx = cx + dx, ty = cy + dy;
+            if (tx < 0 || tx >= map.w || ty < 0 || ty >= map.h) continue;
+            if (!WORLD_ITEM_PLACEABLE.has(map.tiles[ty]?.[tx])) continue;
+            if (map.npcs.some(n => n.x === tx && n.y === ty)) continue;
+            if (map.items.some(i => i.x === tx && i.y === ty)) continue;
+            return { x: tx, y: ty };
         }
     }
     return null;
@@ -1570,11 +1579,22 @@ function findValidItemTile(map, cx, cy) {
 
 function placeStarterWeapon(charClass) {
     const weapon = { ...STARTER_WEAPONS[charClass] || STARTER_WEAPONS.Warrior,
-                     questRequired:'quest_weapon_given',
-                     questComplete:'quest_weapon_complete' };
+                     questRequired: 'quest_weapon_given',
+                     questComplete: 'quest_weapon_complete' };
     const sx = currentMap.playerStart.x, sy = currentMap.playerStart.y;
-    const pos = findValidItemTile(currentMap, sx, sy);
+
+    let pos = findValidItemTile(currentMap, sx, sy, WEAPON_MIN_PLAYER_DISTANCE);
+    if (!pos) {
+        if (DEBUG_PLACEMENT) console.warn('[WEAPON PLACEMENT] Could not maintain minimum player distance — placing near spawn.');
+        pos = findValidItemTile(currentMap, sx, sy, 3);
+    }
+    if (!pos) {
+        pos = findValidItemTile(currentMap, sx, sy, 1);
+    }
+
     if (pos) {
+        const dist = Math.max(Math.abs(pos.x - sx), Math.abs(pos.y - sy));
+        if (DEBUG_PLACEMENT) console.log(`[WEAPON] Placed at (${pos.x}, ${pos.y}), distance from spawn: ${dist} tiles`);
         currentMap.items.push({ ...weapon, x: pos.x, y: pos.y });
     } else {
         console.warn('[placeStarterWeapon] no valid tile within radius', WEAPON_SEARCH_RADIUS, '— weapon added to inventory');
@@ -1632,7 +1652,10 @@ function resetWorldState() {
 
 function startGame(name,charClass) {
     gs.charName=name;gs.charClass=charClass;gs.flags={};gs.inventory=[];
-    gs.knownLore=[]; gs.unlockedAreas=['village','cursed_mines']; gs.reputation={guide:0,elder:0,blacksmith:0,traveler:0};
+    gs.knownLore=[]; gs.codexTutorialShown=false; gs.unlockedAreas=['village','cursed_mines'];
+    if (window.ui) { ui.codexHintPulsed = false; }
+    const _codexHintEl = document.getElementById('hud-codex-hint');
+    if (_codexHintEl) _codexHintEl.classList.add('hud-codex-inactive'); gs.reputation={guide:0,elder:0,blacksmith:0,traveler:0};
     gs.activeWorldEvents = [];
     Object.keys(AMBIENT_LINES_DEFAULT).forEach(k => { AMBIENT_LINES[k] = [...AMBIENT_LINES_DEFAULT[k]]; });
     const _MOODS = ['neutral','tired','worried','distracted','hopeful'];

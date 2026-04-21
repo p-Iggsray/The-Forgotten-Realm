@@ -24,7 +24,8 @@ const ui = {
     paused:        false,
     inventory:     false,
     dialogueError: null,
-    codex:         false,
+    codex:           false,
+    codexHintPulsed: false,
 };
 window.ui = ui;
 
@@ -350,13 +351,18 @@ function _applySignalTokens(data, npc) {
     }
     if (data.reveal_lore) {
         if (!gs.knownLore.includes(data.reveal_lore)) {
+            const isFirst = gs.knownLore.length === 0;
             gs.knownLore.push(data.reveal_lore);
             _lastLoreKey  = data.reveal_lore;
             _lastLoreTime = Date.now();
             const _loreEntry = window.LORE_ENTRIES?.[data.reveal_lore];
             const _loreTitle = _loreEntry ? _loreEntry.title : data.reveal_lore.replace(/_/g, ' ');
             showNotification(`New lore discovered: ${_loreTitle}`, 'lore');
-            setTimeout(() => showNotification('Press L to read the Codex', 'info'), 3300);
+            _updateCodexHint();
+            if (isFirst && !gs.codexTutorialShown) {
+                gs.codexTutorialShown = true;
+                setTimeout(() => showNotification('New entry added to your Codex — press L to read', 'info', 4000), 3300);
+            }
         }
     }
     if (data.reputation_change) {
@@ -801,15 +807,36 @@ function hideDefeatOverlay() {
 }
 
 // ═══════════════════════════════════════════════════════
+//  CODEX HINT
+// ═══════════════════════════════════════════════════════
+const CODEX_HINT_INACTIVE_ALPHA   = 0.4;  // matches CSS
+const CODEX_HINT_PULSE_DURATION_MS = 600; // matches CSS
+
+function _updateCodexHint() {
+    const el = document.getElementById('hud-codex-hint');
+    if (!el) return;
+    if (gs.knownLore.length > 0) {
+        el.classList.remove('hud-codex-inactive');
+        if (!ui.codexHintPulsed) {
+            ui.codexHintPulsed = true;
+            el.classList.add('hud-codex-pulse');
+            setTimeout(() => el.classList.remove('hud-codex-pulse'), CODEX_HINT_PULSE_DURATION_MS);
+        }
+    } else {
+        el.classList.add('hud-codex-inactive');
+    }
+}
+
+// ═══════════════════════════════════════════════════════
 //  NOTIFICATIONS
 // ═══════════════════════════════════════════════════════
-function showNotification(msg,type='info') {
-    const el=document.createElement('div');
-    el.className=`notif notif-${type}`;el.textContent=msg;
+function showNotification(msg, type = 'info', duration = 2800) {
+    const el = document.createElement('div');
+    el.className = `notif notif-${type}`; el.textContent = msg;
     document.getElementById('notifications').appendChild(el);
-    requestAnimationFrame(()=>el.classList.add('notif-show'));
-    setTimeout(()=>el.classList.remove('notif-show'),2800);
-    setTimeout(()=>el.remove(),3300);
+    requestAnimationFrame(() => el.classList.add('notif-show'));
+    setTimeout(() => el.classList.remove('notif-show'), duration);
+    setTimeout(() => el.remove(), duration + 500);
 }
 
 // ═══════════════════════════════════════════════════════
