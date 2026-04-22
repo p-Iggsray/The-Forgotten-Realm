@@ -271,16 +271,28 @@ The-Forgotten-Realm/
 │   ├── launch.ps1             Launcher logic — Python detection, venv, deps, server start
 │   ├── update.bat             One-click updater — pulls latest from GitHub
 │   ├── update.ps1             Updater logic — stash, backup tag, pull, rollback support
-│   ├── weblauncher.bat        Opens browser if server is already running
-│   └── weblauncher.ps1        Web launcher logic
+│   ├── weblauncher.bat        Opens Render-hosted version in browser
+│   └── weblauncher.ps1        Web launcher — connectivity check, cold-start notice
 │
 ├── static/
 │   ├── js/
-│   │   ├── game.js            Main game loop, map gen, input, NPC system, battle, UI (5400+ lines)
-│   │   ├── SpriteRenderer.js  Offscreen sprite atlas and tile variant cache
-│   │   ├── tile-renderer.js   Procedural pixel-art tile drawing (all art in code)
-│   │   ├── visual-quality.js  Ambient occlusion, autotile blending, animations, post-processing
-│   │   └── TILE_MANIFEST.js   Tile ID definitions
+│   │   ├── game-noise.js      Value noise + FBM for terrain generation
+│   │   ├── event-bus.js       Synchronous pub/sub event bus
+│   │   ├── narrator.js        edge-tts streaming TTS via Flask /narrate
+│   │   ├── game-constants.js  All tile IDs, colours, movement and battle constants
+│   │   ├── world.js           Map data loader/caching shim
+│   │   ├── audio.js           Web Audio — ambient, footstep, and battle sounds
+│   │   ├── input.js           Key state tracking and keydown routing
+│   │   ├── battle.js          Full turn-based battle system (938 lines)
+│   │   ├── particles.js       Particle system for ambient effects
+│   │   ├── game-ui.js         UI state — dialogue, quests, codex, inventory, pause (976 lines)
+│   │   ├── scenes.js          SCENES config — title/transition definitions
+│   │   ├── game.js            Player movement, map gen, NPC system, interactions (1749 lines)
+│   │   ├── game-loop.js       RAF loop with fixed 60 Hz timestep accumulator
+│   │   ├── render.js          Full renderer — tiles, characters, particles, minimap (2753 lines)
+│   │   ├── tile-renderer.js   Procedural pixel-art tile drawing — all art in code (1132 lines)
+│   │   ├── SpriteRenderer.js  Sprite atlas facade over TileRenderer
+│   │   └── visual-quality.js  AO bake, colour grade, torch glow, grass sway (547 lines)
 │   └── css/
 │       └── style.css          Canvas, menus, dialogue UI, quest journal, battle screen
 │

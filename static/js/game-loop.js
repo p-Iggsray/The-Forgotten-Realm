@@ -14,6 +14,12 @@
 
 let timeMs = Game.timeMs = 0;
 
+let _isBattleActive = false, _isLoading = false;
+eventBus.on('battle:start',     () => { _isBattleActive = true; });
+eventBus.on('battle:end',       () => { _isBattleActive = false; });
+eventBus.on('ui:loading:start', () => { _isLoading = true; });
+eventBus.on('ui:loading:end',   () => { _isLoading = false; });
+
 const FIXED_STEP = 1000 / 60;
 let lastTs = 0, accumulator = 0;
 let _loopRaf = 0;
@@ -52,7 +58,7 @@ function loop(ts) {
         updateAmbient(dt);
         updateDiscovery();
         battleSystem.update(dt);
-        if (!ui.loading && !ui.paused) particleSystem.update(dt, currentMap, player, TS);
+        if (!_isBattleActive && !_isLoading && !ui.paused) particleSystem.update(dt, currentMap, player, TS);
         accumulator -= FIXED_STEP;
     }
     input.clearFrame();

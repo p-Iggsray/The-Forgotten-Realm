@@ -43,21 +43,42 @@ html, body {
     position: relative;
     width: 100%; height: 100vh;
     display: flex; align-items: center; justify-content: center;
-    background: #060609;
+    background: #050308;
     overflow: hidden;
 }
 
+/* Background layer stack */
+#menu-bg-gradient {
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background: linear-gradient(to top, #0a0508 0%, #050308 100%);
+}
+#menu-mountains {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 1;
+    width: 100%; pointer-events: none;
+}
+#menu-ruins {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 2;
+    width: 100%; pointer-events: none;
+}
+#menu-haze {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse 60% 40% at 50% 100%, rgba(180,80,20,0.06) 0%, transparent 70%);
+}
 #menu-canvas {
     position: absolute; inset: 0;
     width: 100%; height: 100%;
-    pointer-events: none; z-index: 0;
+    pointer-events: none; z-index: 3;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+}
+#menu-vignette {
+    position: absolute; inset: 0; z-index: 4; pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.65) 100%);
 }
 
 /* Panel system */
 .menu-panel {
-    position: relative; z-index: 1;
+    position: relative; z-index: 5;
     width: 100%; max-width: 520px;
     padding: 0 20px;
     transition: opacity 0.22s ease, transform 0.22s ease;
@@ -67,30 +88,47 @@ html, body {
 /* ── Main Menu ─────────────────────────────────── */
 .menu-title-block { text-align: center; margin-bottom: 48px; }
 
-@keyframes title-deco-pulse {
-    0%, 100% { opacity: 0.55; text-shadow: none; }
-    50%       { opacity: 1;   text-shadow: 0 0 10px rgba(200,146,42,0.6); }
+@keyframes menu-title-reveal {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes menu-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+@keyframes menu-rule-draw-left {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+@keyframes menu-rule-draw-right {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
 }
 
 .title-deco {
     font-size: 1rem; color: #c8922a;
     letter-spacing: 8px; margin-bottom: 14px;
-    animation: title-deco-pulse 3.5s ease-in-out infinite;
+    opacity: 0;
+    animation: menu-fade-in 600ms ease-out 200ms forwards;
 }
 
 #menu-title {
     font-family: 'Cinzel', serif;
     font-size: clamp(2rem, 5vw, 3rem);
     color: #c8922a;
-    text-shadow: 0 0 30px rgba(200,146,42,0.5), 0 0 60px rgba(200,146,42,0.2);
+    text-shadow: 0 0 40px rgba(200,140,40,0.4), 0 0 80px rgba(180,100,20,0.15);
     letter-spacing: 3px; margin-bottom: 10px;
     line-height: 1.15;
+    opacity: 0;
+    animation: menu-title-reveal 1200ms ease-out 300ms forwards;
 }
 
 .menu-tagline {
     color: #7a6040; font-size: 0.85rem;
     letter-spacing: 2px; margin-bottom: 22px;
     text-transform: uppercase;
+    opacity: 0;
+    animation: menu-fade-in 600ms ease-out 1700ms forwards;
 }
 
 .title-rule {
@@ -101,9 +139,13 @@ html, body {
 .title-rule span:last-child {
     flex: 1; max-width: 100px;
     height: 1px; background: linear-gradient(to right, transparent, #5a3a18);
+    transform: scaleX(0); transform-origin: right;
+    animation: menu-rule-draw-left 600ms ease-out 1500ms forwards;
 }
 .title-rule span:last-child {
     background: linear-gradient(to left, transparent, #5a3a18);
+    transform-origin: left;
+    animation: menu-rule-draw-right 600ms ease-out 1500ms forwards;
 }
 .rule-gem { color: #c8922a; font-size: 0.7rem; }
 
@@ -112,15 +154,20 @@ html, body {
     margin-bottom: 40px;
 }
 
+@keyframes menu-btn-stagger {
+    from { opacity: 0; transform: translateX(-20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
 .menu-btn {
     background: transparent;
     border: none; border-top: 1px solid #2a1a08;
     color: #c8a870;
     font-family: 'Cinzel', serif; font-size: 1.05rem;
-    letter-spacing: 3px; text-transform: uppercase;
+    letter-spacing: 0.3em; text-transform: uppercase;
     padding: 18px 24px;
     cursor: pointer; text-align: center;
-    transition: all 0.22s ease;
+    transition: color 0.22s ease, letter-spacing 0.22s ease, box-shadow 0.22s ease, transform 80ms ease;
     display: flex; align-items: center; justify-content: center; gap: 12px;
     position: relative;
 }
@@ -128,16 +175,28 @@ html, body {
 
 .menu-btn::after {
     content: '';
-    position: absolute; bottom: 0; left: 50%;
+    position: absolute; bottom: 0; left: 0;
     width: 0; height: 1px;
-    background: #c8922a;
-    transition: width 0.25s ease, left 0.25s ease;
+    background: #ffd700;
+    transition: width 150ms ease;
 }
-.menu-btn:hover { color: #e8d090; letter-spacing: 5px; }
-.menu-btn:hover::after { width: 60%; left: 20%; }
-.menu-btn:hover .btn-icon { text-shadow: 0 0 12px #c8922a; }
+.menu-btn:hover {
+    color: #ffd700;
+    letter-spacing: 0.5em;
+    box-shadow: inset 4px 0 12px rgba(200,140,40,0.2);
+}
+.menu-btn:hover::after { width: 100%; }
+.menu-btn:hover .btn-icon {
+    transform: scale(1.2);
+    text-shadow: 0 0 12px #c8922a;
+}
+.menu-btn:active { transform: scale(0.98); }
 
-.btn-icon { font-size: 0.85rem; opacity: 0.7; }
+.btn-icon {
+    font-size: 0.85rem; opacity: 0.7;
+    display: inline-block;
+    transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1), text-shadow 200ms ease;
+}
 
 .menu-footer {
     text-align: center; font-size: 0.7rem;
@@ -201,16 +260,28 @@ html, body {
     border-color: #c8922a; background: rgba(200,146,42,0.1);
     box-shadow: 0 0 16px rgba(200,146,42,0.12);
 }
-.card-icon { font-size: 1.4rem; }
 .card-name {
     font-family: 'Cinzel', serif; font-size: 0.82rem;
     color: #c8922a; letter-spacing: 1px;
 }
 .class-card:not(.selected) .card-name { color: #a08060; }
+.card-stats {
+    font-family: 'Cinzel', serif; font-size: 0.62rem;
+    color: #5a4020; letter-spacing: 0.5px;
+    margin-top: 1px;
+}
+.class-card.selected .card-stats { color: #c8922a; }
 .card-desc {
-    font-size: 0.75rem; color: #7a6040; line-height: 1.4;
+    font-size: 0.72rem; color: #5a4030; line-height: 1.4;
 }
 .class-card.selected .card-desc { color: #a08060; }
+.card-sprite {
+    image-rendering: pixelated; image-rendering: crisp-edges;
+    display: block; margin: 0 auto 4px;
+    opacity: 0.85;
+}
+.class-card:hover   { transform: scale(1.03); }
+.class-card.selected { transform: scale(1.03); }
 
 .primary-btn {
     margin-top: 16px; width: 100%; padding: 14px;
@@ -249,11 +320,18 @@ html, body {
     padding: 14px 0; border-bottom: 1px solid #1e1208;
 }
 .howto-key {
-    font-family: 'Cinzel', serif; font-size: 0.75rem;
+    font-family: 'Cinzel', serif; font-size: 0.72rem;
     color: #c8922a; letter-spacing: 1px; text-align: center;
-    min-width: 80px; line-height: 1.5;
+    min-width: 72px; line-height: 1.4;
+    background: #100c06;
+    border: 1px solid #c8922a;
+    border-bottom: 3px solid #7a4a10;
+    border-radius: 4px;
+    padding: 6px 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.5), inset 0 1px 0 rgba(200,146,42,0.1);
+    flex-shrink: 0;
 }
-.howto-key span { color: #7a6040; font-size: 0.68rem; }
+.howto-key span { color: #7a6040; font-size: 0.64rem; display: block; margin-top: 2px; }
 .howto-desc { font-size: 0.9rem; color: #a08060; line-height: 1.5; }
 
 .howto-tip {
@@ -322,7 +400,7 @@ html, body {
 }
 
 /* ── Credits ───────────────────────────────────── */
-.credits-block { display: flex; flex-direction: column; gap: 0; }
+.credits-block { display: flex; flex-direction: column; gap: 0; max-height: 72vh; overflow-y: auto; }
 .credits-section { padding: 16px 0; text-align: center; }
 .credits-role {
     font-size: 0.72rem; color: #6a5030; letter-spacing: 2px;
@@ -337,6 +415,13 @@ html, body {
     text-align: center; color: #3a2010; font-size: 0.7rem;
     padding: 4px 0;
 }
+.credits-section--about { text-align: left; padding: 12px 0; }
+.credits-about-body {
+    font-family: 'IM Fell English', serif; font-size: 0.88rem;
+    color: #a08060; line-height: 1.75; margin-bottom: 14px;
+}
+.credits-about-body:last-child { margin-bottom: 0; }
+.credits-about-body em { color: #c8a870; font-style: italic; }
 
 /* ── Game Screen ───────────────────────────────── */
 #game-screen {
@@ -878,6 +963,7 @@ html, body {
 .quest-obj {
     font-size: 0.84rem; color: #a09070; line-height: 1.5;
 }
+/* AUDIT: possibly dead — no <em> tags confirmed in quest description strings; verify at runtime before deleting */
 .quest-obj em { color: #6a8040; font-style: italic; }
 
 .quest-empty {
@@ -1272,3 +1358,27 @@ html, body {
 #inv-grid-wrap::-webkit-scrollbar-track { background: transparent; }
 #inv-char-panel::-webkit-scrollbar-thumb,
 #inv-grid-wrap::-webkit-scrollbar-thumb { background: #3a2010; border-radius: 2px; }
+
+/* ── Menu Mobile / Responsive ──────────────────── */
+@media (max-width: 600px) {
+    #menu-title { font-size: clamp(1.5rem, 8vw, 2.4rem); }
+    .menu-btn   { padding: 20px 16px; min-height: 44px; letter-spacing: 0.2em; }
+    .menu-btn:hover { letter-spacing: 0.35em; }
+    .menu-panel { padding: 0 12px; }
+    .class-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+    .menu-title-block { margin-bottom: 32px; }
+    .menu-nav { margin-bottom: 28px; }
+}
+@media (max-width: 400px) {
+    .class-grid { grid-template-columns: 1fr; }
+    .class-card { flex-direction: row; text-align: left; gap: 10px; align-items: flex-start; }
+    .card-sprite { margin: 0; flex-shrink: 0; }
+}
+@media (hover: none) {
+    /* Touch devices: no hover state jank */
+    .menu-btn:hover { letter-spacing: 0.3em; color: #c8a870; box-shadow: none; }
+    .menu-btn:active { color: #ffd700; letter-spacing: 0.4em; }
+    .menu-btn:active::after { width: 100%; }
+    .class-card:hover { transform: none; }
+    .class-card:active { border-color: #8a5a20; background: rgba(200,146,42,0.06); }
+}

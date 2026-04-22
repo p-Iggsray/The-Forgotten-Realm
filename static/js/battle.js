@@ -180,6 +180,7 @@ const battleSystem = (() => {
         window.showNotification(`A ${enemy.name} appears!`, 'danger');
         _bgCache = null;       // force bg cache rebuild for new enemy type
         _resetParticles();
+        eventBus.emit('battle:start', { enemy });
     }
 
     function handleInput(key) {
@@ -408,6 +409,7 @@ const battleSystem = (() => {
     function endBattle(outcome) {
         if (Game.transition.active) return;
         battle.active = false;
+        eventBus.emit('battle:end', { outcome });
         if (outcome === 'victory') {
             const xp = Game.ENEMY_DEFS[battle.enemy.type].xp;
             window.grantXP(xp);
@@ -416,6 +418,7 @@ const battleSystem = (() => {
             Game.gs.hp = Math.max(1, Math.floor(Game.gs.maxHp * 0.2));
             window.updateHPUI();
             Game.transition.active = true;
+            eventBus.emit('transition:start', {});
             window.showDefeatOverlay();
             Game.transition.timerId = setTimeout(() => {
                 try {
@@ -423,6 +426,7 @@ const battleSystem = (() => {
                 } finally {
                     window.hideDefeatOverlay();
                     Game.transition.active = false;
+                    eventBus.emit('transition:end', {});
                     Game.transition.timerId = null;
                 }
             }, Game.DEFEAT_TRANSITION_MS);

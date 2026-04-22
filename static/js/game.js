@@ -726,7 +726,6 @@ const GUIDE_NPCS = [
       role:'A friendly young villager who greets newcomers and introduces them to Eldoria.' },
 ];
 
-const VILLAGE_NPCS = [];  // Major NPCs are inside buildings; Rowan stays in the village square
 
 const ELDER_NPCS = [
     { id:'elder', name:'Elder Maren', x:6, y:5, portrait:'👴', color:'#d0c870',
@@ -890,7 +889,7 @@ const MAPS = {
     village: {
         id:'village', w:48, h:36,
         tiles: buildVillageTiles(),
-        npcs:  [...VILLAGE_NPCS, ...GUIDE_NPCS],
+        npcs:  [...GUIDE_NPCS],
         signs: VILLAGE_SIGNS,
         items: [],
         playerStart:{x:21,y:16},
@@ -1156,8 +1155,12 @@ window.addEventListener('resize', resizeCanvas);
 
 let moveAccum = 999;
 
+let _transitionActive = false;
+eventBus.on('transition:start', () => { _transitionActive = true; });
+eventBus.on('transition:end',   () => { _transitionActive = false; });
+
 function updateMovement(dt) {
-    if (battleSystem.isActive() || transition.active || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused || ui.codex) { input.clearFrame(); return; }
+    if (battleSystem.isActive() || _transitionActive || ui.inventory || ui.dialogue || ui.sign || ui.questLog || ui.loading || ui.paused || ui.codex) { input.clearFrame(); return; }
     const dirs = [
         { keys:['ArrowUp','w','W'],    dx:0,  dy:-1, f:'up'    },
         { keys:['ArrowDown','s','S'],  dx:0,  dy:1,  f:'down'  },
@@ -1244,6 +1247,7 @@ function resetTransitionInvariants() {
 
 function changeMap(mapId, sx, sy) {
     Game.transition.active = true;
+    eventBus.emit('transition:start', { mapId });
 
     const fromId    = Game.currentMap?.id ?? null;
     const fromScene = Game.activeScene;
@@ -1272,6 +1276,7 @@ function changeMap(mapId, sx, sy) {
     toScene?.onEnter?.(fromId);
 
     Game.transition.active = false;
+    eventBus.emit('transition:end', { mapId });
 
     // Narrator: fire scene_enter after one render frame so the map is visible
     const _narMapName = currentMap.name;
@@ -1699,7 +1704,7 @@ document.getElementById('begin-btn').addEventListener('click',()=>{
     const name=document.getElementById('char-name').value.trim();
     const charClass=document.querySelector('.class-card.selected')?.dataset.class;
     if (!name || !charClass) return; // button should already be disabled; guard anyway
-    setTimeout(()=>startGame(name,charClass), 340);
+    setTimeout(()=>startGame(name,charClass), 600);
 });
 
 document.getElementById('restart-btn').addEventListener('click',()=>{
@@ -1713,8 +1718,8 @@ document.getElementById('restart-btn').addEventListener('click',()=>{
             document.querySelectorAll('.menu-panel').forEach(p=>{p.classList.add('hidden');p.style.opacity='0';p.style.transform='';});
             const main=document.getElementById('menu-main');
             main.classList.remove('hidden');
-            main.style.transform='translateY(0)';
-            requestAnimationFrame(()=>{main.style.opacity='1';});
+            main.style.transform='translateX(0)';
+            requestAnimationFrame(()=>{ main.style.opacity='1'; if(typeof _staggerMainButtons==='function') _staggerMainButtons(); });
             menuLoop&&menuLoop();
             // Reset character creation form
             document.getElementById('char-name').value='';

@@ -10,13 +10,19 @@ const input = (() => {
     // and O(1) .has() vs O(n) .includes() scan.
     const _NAV_KEYS = new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ']);
 
+    let _battleActive = false, _transitionActive = false;
+    eventBus.on('battle:start',     () => { _battleActive = true; });
+    eventBus.on('battle:end',       () => { _battleActive = false; });
+    eventBus.on('transition:start', () => { _transitionActive = true; });
+    eventBus.on('transition:end',   () => { _transitionActive = false; });
+
     document.addEventListener('keydown', e => {
         if (document.activeElement?.tagName === 'INPUT') return;
         if (_NAV_KEYS.has(e.key)) e.preventDefault();
         if (!KEYS.has(e.key)) JUST_PRESSED.add(e.key);
         KEYS.add(e.key);
-        if (window.transition?.active) { e.preventDefault(); return; }
-        if (window.battleSystem?.isActive()) { e.preventDefault(); window.battleSystem.handleInput(e.key); return; }
+        if (_transitionActive) { e.preventDefault(); return; }
+        if (_battleActive) { e.preventDefault(); window.battleSystem.handleInput(e.key); return; }
         if (e.key === 'Escape') {
             if (window.ui?.paused)    { window.closePause(); return; }
             if (window.ui?.codex)     { window.closeCodex(); return; }

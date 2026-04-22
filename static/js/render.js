@@ -11,6 +11,13 @@ let bgCtx    = bgCanvas.getContext('2d');
 let bgDirty  = true;   // true -> must rebuild before next render
 let _bgCamX  = -1, _bgCamY = -1; // last cam position baked into bgCanvas
 
+// --- Event-driven cached state -------------------------------------------
+let _isBattleActive = false, _isLoading = false;
+eventBus.on('battle:start',     () => { _isBattleActive = true; });
+eventBus.on('battle:end',       () => { _isBattleActive = false; });
+eventBus.on('ui:loading:start', () => { _isLoading = true; });
+eventBus.on('ui:loading:end',   () => { _isLoading = false; });
+
 // --- Public API ----------------------------------------------------------
 function markBgDirty()               { bgDirty = true; }
 function invalidateLightCanvas()     { lightCanvas = null; }
@@ -21,6 +28,7 @@ function invalidateEnemyCache() { _enemyCache.clear(); _enemyCacheTS = 0; }
 function invalidateChestCache() { _chestCache.clear(); _chestCacheTS = 0; }
 
 // DEV cache stats — hit/miss counters, inspectable via cacheStats()
+// AUDIT: possibly dead — no production callers; intentionally callable from browser console — confirm before deleting
 let _charCacheHits = 0, _charCacheMisses = 0;
 let _enemyCacheHits = 0, _enemyCacheMisses = 0;
 function cacheStats() {
@@ -2644,7 +2652,7 @@ function renderMinimap() {
         _minimapCtx.imageSmoothingEnabled = false;
     }
     // Cache display state — only write DOM when it changes
-    const shouldShow = !battleSystem.isActive() && !ui.loading;
+    const shouldShow = !_isBattleActive && !_isLoading;
     if (shouldShow !== _minimapDisplayState) {
         _minimapDisplayState = shouldShow;
         _minimapEl.style.display = shouldShow ? 'block' : 'none';
@@ -2731,7 +2739,7 @@ function render() {
     renderVignette();   // corner vignette in interiors
     if (typeof VQ !== 'undefined') VQ.renderOutdoorTorchGlow(); // torch warm halo on lit maps (guarded, no-op during dark battle)
     renderWorldEventOverlays();
-    if (battleSystem.isActive()) battleSystem.render(ctx);
+    if (_isBattleActive) battleSystem.render(ctx);
     else updateHintBar();
     // Scanlines + color grade always last — applies correctly over both overworld and battle
     if (!_scanlinesCanvas || _scanlinesCanvas.width !== cW || _scanlinesCanvas.height !== cH) _buildScanlinesCanvas();

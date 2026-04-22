@@ -129,36 +129,6 @@ function Write-Colored {
     }
 }
 
-# ─── Box rendering ────────────────────────────────────────────────────────────
-function New-Box {
-    param(
-        [string[]]$Lines,
-        [string]$BorderColor = 'Cyan',
-        [string]$Style       = 'Double',
-        [string]$ContentColor = 'White',
-        [int]$InnerWidth     = 0
-    )
-    if ($Style -eq 'Double') {
-        $tl='/'; $tr='\'; $bl='\'; $br='/'; $h='='; $v='|'
-    } else {
-        $tl='+'; $tr='+'; $bl='+'; $br='+'; $h='-'; $v='|'
-    }
-    if ($InnerWidth -lt 1) {
-        $maxLen = ($Lines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
-        $InnerWidth = [Math]::Max(48, $maxLen + 2)
-        $InnerWidth = [Math]::Min($InnerWidth, $script:TermWidth - 4)
-    }
-    $bar = $h * $InnerWidth
-    Write-Colored "  $tl$bar$tr" -Color $BorderColor
-    foreach ($line in $Lines) {
-        $padded = $line.PadRight($InnerWidth)
-        if ($padded.Length -gt $InnerWidth) { $padded = $padded.Substring(0, $InnerWidth) }
-        Write-Colored "  $v" -Color $BorderColor -NoNewline
-        Write-Colored $padded -Color $ContentColor -NoNewline
-        Write-Colored $v -Color $BorderColor
-    }
-    Write-Colored "  $bl$bar$br" -Color $BorderColor
-}
 
 function Show-TitleCard {
     Clear-Host
@@ -330,60 +300,6 @@ function Invoke-WithSpinner {
     }
 }
 
-# ─── Step functions ───────────────────────────────────────────────────────────
-function Test-PythonEnvironment {
-    $out = & python --version 2>&1
-    if ($LASTEXITCODE -ne 0 -or $null -eq $out) { throw "Python not found on PATH." }
-    $ver = ($out -replace 'Python\s+', '').Trim()
-    if (-not $ver.StartsWith('3')) { throw "Python 3 required. Found: $ver" }
-    $script:PythonExe = 'python'
-    $script:PyVersion = $ver
-}
-
-function Initialize-Venv {
-    $venvPy = Join-Path $RepoRoot 'venv\Scripts\python.exe'
-    if (-not (Test-Path $venvPy)) {
-        $proc = Start-Process -FilePath $script:PythonExe `
-            -ArgumentList '-m venv venv' `
-            -NoNewWindow -Wait -PassThru `
-            -WorkingDirectory $RepoRoot
-        if ($proc.ExitCode -ne 0) { throw "Failed to create virtual environment." }
-    }
-    $script:VenvPython = $venvPy
-}
-
-function Install-Dependencies {
-    $reqPath   = Join-Path $RepoRoot 'requirements.txt'
-    $cachePath = Join-Path $RepoRoot '.deps-installed'
-
-    if (-not (Test-Path $reqPath)) {
-        $script:DepsStatus = 'no requirements.txt'
-        return
-    }
-
-    if (Test-Path $cachePath) {
-        $reqMtime   = (Get-Item $reqPath).LastWriteTimeUtc
-        $cacheMtime = (Get-Item $cachePath).LastWriteTimeUtc
-        if ($cacheMtime -ge $reqMtime) {
-            $script:DepsStatus = 'cached'
-            return
-        }
-    }
-
-    $pipOutput = & $script:VenvPython -m pip install -r $reqPath -q --disable-pip-version-check 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $script:PipStderr = ($pipOutput | Select-Object -Last 10 | ForEach-Object { "$_" })
-        throw "pip install failed (exit $LASTEXITCODE)"
-    }
-    [System.IO.File]::WriteAllText($cachePath, (Get-Date -Format 'o'))
-    $script:DepsStatus = 'installed'
-}
-
-function Invoke-GitUpdate {
-    $git = Get-Command git -ErrorAction SilentlyContinue
-    if ($null -eq $git) { return }
-    & git pull --ff-only 2>&1 | Out-Null
-}
 
 function Test-PortAvailability {
     # Try Get-NetTCPConnection first

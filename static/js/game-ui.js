@@ -35,14 +35,18 @@ let _lastLoreKey  = null;
 let _lastLoreTime = 0;
 let _codexSelIdx  = 0;
 
-const DARKNESS_TINT                 = 'rgba(20, 0, 30, 0.15)';
-const DARKNESS_AMBIENT_REDUCTION    = 0.05;
 const SEAL_WEAKENING_ENEMY_HP_BONUS = 0.10;
 const DEBUG_WORLD_EVENTS            = window.location.hostname === 'localhost';
 
 // ── Internal write path (enforces invariants) ────────
-function setLoading(bool) { ui.loading = bool; }
-function setPaused(bool)  { ui.paused  = bool; }
+function setLoading(bool) {
+    ui.loading = bool;
+    eventBus.emit(bool ? 'ui:loading:start' : 'ui:loading:end');
+}
+function setPaused(bool) {
+    ui.paused = bool;
+    eventBus.emit(bool ? 'ui:paused:start' : 'ui:paused:end');
+}
 
 // ═══════════════════════════════════════════════════════
 //  HP HUD
@@ -159,6 +163,7 @@ const DIALOGUE_ERROR_MSGS = {
 };
 
 async function startDialogue(npc) {
+    eventBus.emit('ui:dialogue:open', { npc });
     setLoading(true);
     const box     = document.getElementById('dialogue-box');
     const dlgText = document.getElementById('dlg-text');
@@ -520,6 +525,7 @@ function closeDialogue(force = false) {
     if (_activeController) { _activeController.abort(); _activeController = null; }
     const errNpc     = ui.dialogueError?.npc;
     ui.dialogue      = null;
+    eventBus.emit('ui:dialogue:close', {});
     setLoading(false);
     ui.dialogueError = null;
     document.getElementById('dialogue-box').classList.add('hidden');
@@ -809,7 +815,6 @@ function hideDefeatOverlay() {
 // ═══════════════════════════════════════════════════════
 //  CODEX HINT
 // ═══════════════════════════════════════════════════════
-const CODEX_HINT_INACTIVE_ALPHA   = 0.4;  // matches CSS
 const CODEX_HINT_PULSE_DURATION_MS = 600; // matches CSS
 
 function _updateCodexHint() {

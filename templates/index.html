@@ -10,8 +10,36 @@
 <!-- ── Start Screen ──────────────────────────────────── -->
 <div id="start-screen">
 
-    <!-- Animated background -->
+    <!-- Layer 1: deep background gradient -->
+    <div id="menu-bg-gradient"></div>
+
+    <!-- Layer 2: distant mountain silhouette -->
+    <svg id="menu-mountains" viewBox="0 0 1920 300" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="0,300 0,240 60,210 130,155 210,230 310,115 400,185 500,82 620,165 730,92 840,142 970,45 1100,135 1240,200 1370,88 1490,168 1620,108 1750,185 1860,225 1920,215 1920,300" fill="#0f080c"/>
+    </svg>
+
+    <!-- Layer 3: mid-ground ruins silhouette -->
+    <svg id="menu-ruins" viewBox="0 0 1920 200" preserveAspectRatio="xMidYMax slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <polygon points="
+            0,200 0,170 50,170 50,140 70,140 70,155 100,155 100,120 120,120 120,105 140,95 160,105 160,120 180,120 180,170
+            260,170 260,145 300,145 300,125 320,125 320,108 340,98 360,108 360,125 380,125 380,145 420,145 420,170
+            500,170 500,150 540,150 540,130 570,130 570,105 590,90 615,80 640,90 640,105 660,130 680,130 680,150 720,150 720,170
+            800,170 800,155 850,155 850,170 920,170 920,120 940,120 940,100 960,88 980,100 1000,88 1020,100 1020,120 1040,120 1040,170
+            1120,170 1120,150 1160,150 1160,165 1210,165 1210,170
+            1290,170 1290,130 1315,130 1315,108 1340,95 1365,108 1365,130 1390,130 1390,145 1420,145 1420,170
+            1490,170 1490,158 1540,158 1540,170 1620,170 1620,140 1645,140 1645,118 1668,105 1690,118 1690,140 1720,140 1720,170
+            1800,170 1800,155 1840,155 1840,138 1870,128 1900,138 1900,155 1920,155 1920,200
+        " fill="#16080e"/>
+    </svg>
+
+    <!-- Layer 4: ember glow haze -->
+    <div id="menu-haze"></div>
+
+    <!-- Layer 5: animated particles -->
     <canvas id="menu-canvas"></canvas>
+
+    <!-- Layer 6: corner vignette -->
+    <div id="menu-vignette"></div>
 
     <!-- ① Main Menu -->
     <div id="menu-main" class="menu-panel">
@@ -32,7 +60,7 @@
                 <span class="btn-icon">&#128214;</span> How to Play
             </button>
             <button class="menu-btn" id="btn-credits">
-                <span class="btn-icon">&#10022;</span> Credits
+                <span class="btn-icon">&#10022;</span> About
             </button>
         </nav>
         <p class="menu-footer">Powered by Groq &middot; Llama 3.3 &middot; Flask</p>
@@ -48,37 +76,41 @@
 
         <div class="form-group">
             <label for="char-name">Your Name</label>
-            <input type="text" id="char-name" placeholder="Enter your name..." maxlength="30" autocomplete="off">
+            <input type="text" id="char-name" placeholder="Enter your name, wanderer." maxlength="16" autocomplete="off">
         </div>
 
         <div class="form-group">
             <label>Choose a Class</label>
             <div class="class-grid">
                 <button class="class-card" data-class="Warrior">
-                    <div class="card-icon">&#9876;</div>
+                    <canvas class="card-sprite" width="40" height="48"></canvas>
                     <div class="card-name">Warrior</div>
+                    <div class="card-stats">ATK 16 · DEF 8 · SPD Normal</div>
                     <div class="card-desc">Iron-willed fighter. Masters of blade and shield.</div>
                 </button>
                 <button class="class-card" data-class="Rogue">
-                    <div class="card-icon">&#128279;</div>
+                    <canvas class="card-sprite" width="40" height="48"></canvas>
                     <div class="card-name">Rogue</div>
+                    <div class="card-stats">ATK 13 · DEF 5 · SPD Fast</div>
                     <div class="card-desc">Swift and cunning. Strikes from the shadows.</div>
                 </button>
                 <button class="class-card" data-class="Wizard">
-                    <div class="card-icon">&#10024;</div>
+                    <canvas class="card-sprite" width="40" height="48"></canvas>
                     <div class="card-name">Wizard</div>
+                    <div class="card-stats">ATK 20 · DEF 3 · SPD Slow</div>
                     <div class="card-desc">Wielder of arcane forces. Power and fragility.</div>
                 </button>
                 <button class="class-card" data-class="Cleric">
-                    <div class="card-icon">&#9728;</div>
+                    <canvas class="card-sprite" width="40" height="48"></canvas>
                     <div class="card-name">Cleric</div>
+                    <div class="card-stats">ATK 11 · DEF 10 · SPD Normal</div>
                     <div class="card-desc">Blessed by the Old Gods. Healer and protector.</div>
                 </button>
             </div>
         </div>
 
         <p id="create-error" class="create-error hidden"></p>
-        <button id="begin-btn" class="primary-btn" disabled>&#9876; Enter the World</button>
+        <button id="begin-btn" class="primary-btn" disabled>Begin Your Journey</button>
     </div>
 
     <!-- ③ Options -->
@@ -96,6 +128,13 @@
                 <div class="opts-slider-wrap">
                     <input type="range" id="opt-vol" class="opt-slider" min="0" max="100" value="50">
                     <span id="opt-vol-pct" class="opts-pct">50%</span>
+                </div>
+            </div>
+            <div class="opts-row">
+                <label for="opt-sfx-vol">SFX Volume</label>
+                <div class="opts-slider-wrap">
+                    <input type="range" id="opt-sfx-vol" class="opt-slider" min="0" max="100" value="70">
+                    <span id="opt-sfx-vol-pct" class="opts-pct">70%</span>
                 </div>
             </div>
         </div>
@@ -156,30 +195,30 @@
         </div>
     </div>
 
-    <!-- ④ Credits -->
+    <!-- ④ About -->
     <div id="menu-credits" class="menu-panel hidden">
         <div class="panel-header">
             <button class="back-btn" id="btn-back-credits">&#8592; Back</button>
-            <h2>Credits</h2>
+            <h2>About</h2>
         </div>
         <div class="create-rule"></div>
         <div class="credits-block">
             <div class="credits-section">
                 <p class="credits-role">Game Design &amp; Development</p>
                 <p class="credits-name">Parker Riggs</p>
-                <p class="credits-note">CS4880 — Assignment 10</p>
+                <p class="credits-note">The Forgotten Realm</p>
             </div>
             <div class="credits-divider">&#10022;</div>
-            <div class="credits-section">
-                <p class="credits-role">AI Narrative Engine</p>
-                <p class="credits-name">Llama 3.3 · 70B</p>
-                <p class="credits-note">via Groq Cloud Inference</p>
-            </div>
-            <div class="credits-divider">&#10022;</div>
-            <div class="credits-section">
-                <p class="credits-role">Built With</p>
-                <p class="credits-name">Python · Flask · HTML5 Canvas</p>
-                <p class="credits-note">No game engine — custom from scratch</p>
+            <div class="credits-section credits-section--about">
+                <p class="credits-about-body">
+                    <em>The Forgotten Realm</em> is a proof-of-concept RPG built to show what it looks like when a large language model isn't a feature layered on top of a game — but the beating heart of it. Every NPC you meet generates their responses through a live LLM call. Conversations breathe. The world remembers who you are, what you've done, and how you speak to it. No two playthroughs are the same, because no two conversations ever are.
+                </p>
+                <p class="credits-about-body">
+                    That comes with real tension. Language models inherit the biases, gaps, and tendencies of everything they were trained on. When you hand one narrative authority in a game, those qualities don't disappear — they become part of the story. <em>The Forgotten Realm</em> doesn't pretend otherwise. It puts the friction in plain sight, and asks whether something valuable can still emerge from an imperfect tool.
+                </p>
+                <p class="credits-about-body">
+                    The broader argument this project makes is simple: AI in games doesn't have to mean procedural filler or dialogue trees dressed up with a chatbot. Used deliberately, an LLM can give a world genuine responsiveness — the sense that something on the other side is actually listening. Whether that makes games richer, stranger, or harder to trust is the question worth sitting with. <em>The Forgotten Realm</em> exists to make that question feel real.
+                </p>
             </div>
         </div>
     </div>
@@ -456,22 +495,31 @@ function resizeMenuCanvas() {
 resizeMenuCanvas();
 window.addEventListener('resize', resizeMenuCanvas);
 
-const EMBER_COUNT = 55;
-const embers = Array.from({ length: EMBER_COUNT }, () => spawnEmber(true));
+const MENU_PARTICLE_COUNT = 80;
+const MENU_PARTICLE_TWINKLE_CHANCE = 0.002;
 
-function spawnEmber(randomY) {
+function spawnParticle(randomY) {
+    const rnd = Math.random();
+    const tier = rnd < 0.6 ? 0 : rnd < 0.9 ? 1 : 2; // 60% tiny, 30% small, 10% medium
+    const r    = [0.5, 1, 1.5][tier];
+    const warm = tier > 0;
     return {
-        x:    Math.random() * mcW,
-        y:    randomY ? Math.random() * mcH : mcH + 10,
-        vx:   (Math.random() - 0.5) * 0.4,
-        vy:   -(Math.random() * 0.6 + 0.25),
-        r:    Math.random() * 2.2 + 0.6,
-        maxA: Math.random() * 0.7 + 0.2,
-        life: 0,
-        max:  Math.random() * 320 + 180,
-        warm: Math.random() < 0.65,
+        x:       Math.random() * mcW,
+        y:       randomY ? Math.random() * mcH : -8,
+        vx:      (Math.random() - 0.5) * 0.3,
+        vy:      Math.random() * 0.35 + 0.12, // downward drift
+        r,
+        warm,
+        maxA:    Math.random() * 0.45 + 0.12,
+        life:    0,
+        max:     Math.random() * 400 + 250,
+        twinkle: false,
+        twinkleT:0,
     };
 }
+
+const menuParticles = Array.from({ length: MENU_PARTICLE_COUNT }, () => spawnParticle(true));
+let _twinkleCount = 0;
 
 function menuLoop() {
     mct.clearRect(0, 0, mcW, mcH);
@@ -492,14 +540,29 @@ function menuLoop() {
         mct.beginPath(); mct.arc(b.x, b.y, b.r, 0, Math.PI*2); mct.fill();
     }
 
-    // Embers
-    for (const e of embers) {
-        e.x += e.vx; e.y += e.vy; e.life++;
-        if (e.life >= e.max || e.y < -10) Object.assign(e, spawnEmber(false), {life:0});
-        const fade = Math.min(1, Math.min(e.life / 40, (e.max - e.life) / 40));
-        mct.globalAlpha = e.maxA * fade;
-        mct.fillStyle = e.warm ? '#c8922a' : '#e8d090';
-        mct.beginPath(); mct.arc(e.x, e.y, e.r, 0, Math.PI*2); mct.fill();
+    // Particles
+    for (const p of menuParticles) {
+        p.x += p.vx; p.y += p.vy; p.life++;
+        if (p.life >= p.max || p.y > mcH + 10) {
+            Object.assign(p, spawnParticle(false), { life: 0 });
+            if (p.twinkle) { _twinkleCount = Math.max(0, _twinkleCount - 1); p.twinkle = false; }
+        }
+
+        // Twinkle trigger
+        if (!p.twinkle && _twinkleCount < 3 && Math.random() < MENU_PARTICLE_TWINKLE_CHANCE) {
+            p.twinkle = true; p.twinkleT = 0; _twinkleCount++;
+        }
+
+        let alpha = p.maxA * Math.min(1, Math.min(p.life / 60, (p.max - p.life) / 60));
+        if (p.twinkle) {
+            p.twinkleT += 1000 / 60;
+            alpha = 0.3 + Math.sin(Math.PI * p.twinkleT / 800) * 0.7;
+            if (p.twinkleT >= 800) { p.twinkle = false; _twinkleCount = Math.max(0, _twinkleCount - 1); }
+        }
+
+        mct.globalAlpha = Math.max(0, alpha);
+        mct.fillStyle = p.warm ? 'rgba(255,200,100,1)' : 'rgba(200,180,160,1)';
+        mct.beginPath(); mct.arc(p.x, p.y, p.r, 0, Math.PI * 2); mct.fill();
     }
     mct.globalAlpha = 1;
 
@@ -510,28 +573,42 @@ function menuLoop() {
 menuLoop();
 
 // ── Panel navigation ──────────────────────────────────
+function _staggerMainButtons() {
+    document.querySelectorAll('#menu-main .menu-btn').forEach((btn, i) => {
+        btn.style.opacity   = '0';
+        btn.style.transform = 'translateX(-20px)';
+        btn.style.transition = 'opacity 300ms ease, transform 300ms ease';
+        setTimeout(() => { btn.style.opacity = '1'; btn.style.transform = 'translateX(0)'; }, i * 100);
+    });
+}
+
 function showPanel(id) {
     const current = document.querySelector('.menu-panel:not(.hidden)');
     const next    = document.getElementById(id);
     if (!current || current === next) {
-        // Initial load — just show immediately
+        // Initial load — show immediately then stagger
         document.querySelectorAll('.menu-panel').forEach(p => { p.classList.add('hidden'); p.style.opacity='0'; p.style.transform=''; });
         next.classList.remove('hidden');
-        requestAnimationFrame(() => { next.style.opacity='1'; next.style.transform='translateY(0)'; });
+        requestAnimationFrame(() => { next.style.opacity='1'; next.style.transform='translateX(0)'; });
+        if (id === 'menu-main') _staggerMainButtons();
         return;
     }
-    // Fade + slide current panel out
+
+    const goingDeeper = id !== 'menu-main';
+    const outX = goingDeeper ? '-30px' : '30px';
+    const inX  = goingDeeper ? '30px'  : '-30px';
+
     current.style.opacity   = '0';
-    current.style.transform = 'translateY(-10px)';
+    current.style.transform = `translateX(${outX})`;
     setTimeout(() => {
         document.querySelectorAll('.menu-panel').forEach(p => { p.classList.add('hidden'); p.style.opacity='0'; });
-        // Slide next in from slightly below
-        next.style.transform = 'translateY(12px)';
+        next.style.transform = `translateX(${inX})`;
         next.classList.remove('hidden');
         requestAnimationFrame(() => requestAnimationFrame(() => {
             next.style.opacity   = '1';
-            next.style.transform = 'translateY(0)';
+            next.style.transform = 'translateX(0)';
         }));
+        if (id === 'menu-main') _staggerMainButtons();
     }, 200);
 }
 
@@ -541,20 +618,24 @@ document.getElementById('btn-new-game').addEventListener('click',    () => showP
 document.getElementById('btn-options').addEventListener('click',     () => showPanel('menu-options'));
 document.getElementById('btn-how-to-play').addEventListener('click', () => showPanel('menu-howto'));
 document.getElementById('btn-credits').addEventListener('click',     () => showPanel('menu-credits'));
-document.getElementById('btn-back-create').addEventListener('click', () => showPanel('menu-main'));
-document.getElementById('btn-back-options').addEventListener('click',() => showPanel('menu-main'));
-document.getElementById('btn-back-howto').addEventListener('click',  () => showPanel('menu-main'));
-document.getElementById('btn-back-credits').addEventListener('click',() => showPanel('menu-main'));
+document.getElementById('btn-back-create').addEventListener('click', () => { // AUDIO: menu_back
+    audio.playMenuBack(); showPanel('menu-main'); });
+document.getElementById('btn-back-options').addEventListener('click',() => { // AUDIO: menu_back
+    audio.playMenuBack(); showPanel('menu-main'); });
+document.getElementById('btn-back-howto').addEventListener('click',  () => { // AUDIO: menu_back
+    audio.playMenuBack(); showPanel('menu-main'); });
+document.getElementById('btn-back-credits').addEventListener('click',() => { // AUDIO: menu_back
+    audio.playMenuBack(); showPanel('menu-main'); });
 
 // ── Options panel logic ───────────────────────────────
-// Shared volume preference (read by game.js on startMusic)
-window.gameVolumePct = 50;
+// Shared volume preferences (read by game.js on startMusic)
+window.gameVolumePct    = 50;
+window.gameSfxVolumePct = 70;
 
 function syncVolSliders(pct) {
     window.gameVolumePct = pct;
-    // Apply to live audio if game is running
-    if (typeof audio !== 'undefined') audio.setVolume(pct);
-    // Keep both sliders in sync
+    localStorage.setItem('tfr_vol', pct);
+    if (typeof audio !== 'undefined') { audio.setVolume(pct); audio.setMenuMusicVolume(pct); }
     const optVol   = document.getElementById('opt-vol');
     const pauseVol = document.getElementById('pause-vol');
     if (optVol)   { optVol.value = pct;   optVol.style.setProperty('--pct', pct + '%'); }
@@ -563,14 +644,35 @@ function syncVolSliders(pct) {
     if (pctLabel) pctLabel.textContent = pct + '%';
 }
 
-// Init slider fill on load
-(function() {
-    const s = document.getElementById('opt-vol');
-    s.style.setProperty('--pct', s.value + '%');
+function syncSfxSlider(pct) {
+    window.gameSfxVolumePct = pct;
+    localStorage.setItem('tfr_sfx_vol', pct);
+    if (typeof audio !== 'undefined') audio.setMenuSfxVolume(pct);
+    const sfxSlider = document.getElementById('opt-sfx-vol');
+    const sfxPct    = document.getElementById('opt-sfx-vol-pct');
+    if (sfxSlider) { sfxSlider.value = pct; sfxSlider.style.setProperty('--pct', pct + '%'); }
+    if (sfxPct)   sfxPct.textContent = pct + '%';
+}
+
+// Load persisted prefs, then init slider fills
+(function initPrefs() {
+    const savedVol    = localStorage.getItem('tfr_vol');
+    const savedSfxVol = localStorage.getItem('tfr_sfx_vol');
+    syncVolSliders(savedVol    != null ? +savedVol    : 50);
+    syncSfxSlider (savedSfxVol != null ? +savedSfxVol : 70);
 })();
 
+let _sliderTickThrottle = 0;
 document.getElementById('opt-vol').addEventListener('input', function() {
-    syncVolSliders(+this.value);
+    syncVolSliders(+this.value); // AUDIO: slider_change
+    const _now = Date.now();
+    if (_now - _sliderTickThrottle > 80) { audio.playMenuSliderTick(); _sliderTickThrottle = _now; }
+});
+
+document.getElementById('opt-sfx-vol').addEventListener('input', function() {
+    syncSfxSlider(+this.value); // AUDIO: slider_change
+    const _now = Date.now();
+    if (_now - _sliderTickThrottle > 80) { audio.playMenuSliderTick(); _sliderTickThrottle = _now; }
 });
 
 function updateOptFullscreenLabel() {
@@ -578,6 +680,8 @@ function updateOptFullscreenLabel() {
     if (btn) btn.textContent = document.fullscreenElement ? '\u2715 Exit Fullscreen' : '\u29fc Enter Fullscreen';
 }
 document.getElementById('opt-fullscreen').addEventListener('click', () => {
+    // AUDIO: fullscreen_toggle
+    audio.playMenuSelect();
     if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(() => {});
     } else {
@@ -606,6 +710,7 @@ document.querySelectorAll('.class-card').forEach(card => {
         card.classList.add('selected');
         document.getElementById('create-error').classList.add('hidden');
         validateCreate();
+        audio.playMenuClassSelect(card.dataset.class);
     });
 });
 
@@ -613,201 +718,29 @@ document.querySelectorAll('.class-card').forEach(card => {
 const _ov = document.getElementById('transition-overlay');
 function fadeOverlay(dir, cb) {
     if (dir === 'in') {
-        _ov.style.transition = 'opacity 0.35s ease';
+        _ov.style.transition = 'opacity 0.6s ease';
         _ov.style.opacity = '1';
         _ov.style.pointerEvents = 'all';
-        setTimeout(() => { if (cb) cb(); }, 360);
+        setTimeout(() => { if (cb) cb(); }, 620);
     } else {
-        _ov.style.transition = 'opacity 0.5s ease';
+        _ov.style.transition = 'opacity 0.8s ease';
         _ov.style.opacity = '0';
         _ov.style.pointerEvents = 'none';
-        setTimeout(() => { if (cb) cb(); }, 520);
+        setTimeout(() => { if (cb) cb(); }, 820);
     }
 }
 
 // ── Menu Audio System ─────────────────────────────────
-let mACtx = null, mAMaster = null, mAMelody = null, mANodes = [];
+// Thin stubs — all synthesis lives in audio.js (single AudioContext)
+function initMenuAudio() { audio.init(); audio.startMenuMusic(); }
+function stopMenuAudio()  { audio.stopMenuMusic(600); }
+function playHover()      { audio.playMenuHover(); }   // AUDIO: menu_hover
+function playClick()      { audio.playMenuSelect(); }  // AUDIO: menu_select
 
-// A natural minor scale across two octaves (Hz)
-const MENU_SCALE = [
-    55, 61.74, 65.41, 73.42, 82.41, 87.31, 98,
-    110, 123.47, 130.81, 146.83, 164.81, 174.61, 196,
-    220, 246.94, 261.63, 293.66,
-];
-
-function initMenuAudio() {
-    if (mACtx) return;
-    mACtx = new (window.AudioContext || window['webkitAudioContext'])();
-    // Create SFX context here during the same user gesture so it's
-    // already "running" before any click fires
-    if (!sfxCtx || sfxCtx.state === 'closed') {
-        sfxCtx = new (window.AudioContext || window['webkitAudioContext'])();
-    }
-
-    // Wet chain: delay → LPF → feedback → master
-    mAMaster = mACtx.createGain();
-    mAMaster.gain.value = 0.32;
-    mAMaster.connect(mACtx.destination);
-
-    const delay = mACtx.createDelay(4);
-    delay.delayTime.value = 0.65;
-    const fb  = mACtx.createGain();   fb.gain.value  = 0.36;
-    const lpf = mACtx.createBiquadFilter();
-    lpf.type = 'lowpass'; lpf.frequency.value = 1100;
-    delay.connect(lpf); lpf.connect(fb); fb.connect(delay);
-    delay.connect(mAMaster);
-    mANodes.push(delay, fb, lpf);
-
-    // Ambience — pulled back so melody sits above it
-    _mDrone(55,    0.07, 'sine');
-    _mDrone(82.41, 0.04, 'sine');
-    _mDrone(110,   0.02, 'triangle');
-
-    // Wind texture (quieter, background only)
-    _mWind();
-
-    // Dedicated melody gain — runs loud, separate from the wet/dry chain
-    const melGain = mACtx.createGain();
-    melGain.gain.value = 1.0;
-    melGain.connect(mAMaster);
-
-    // Opening chord — immediately audible
-    _mChord([MENU_SCALE[0], MENU_SCALE[4], MENU_SCALE[7]], delay, melGain);
-
-    // Melody: every 2–3 s, loud chorus notes
-    mAMelody = setInterval(() => {
-        if (!mACtx || mACtx.state === 'closed') return;
-        const burst = Math.random() < 0.4 ? 2 : 1;
-        const pool  = MENU_SCALE.slice(4, 14);
-        for (let i = 0; i < burst; i++) {
-            const freq = pool[Math.floor(Math.random() * pool.length)];
-            _mNote(freq, delay, melGain, 0.50, 5.5);
-        }
-    }, 2000 + Math.random() * 1400);
-}
-
-function _mDrone(freq, vol, type) {
-    const o = mACtx.createOscillator(), g = mACtx.createGain();
-    o.type = type; o.frequency.value = freq; g.gain.value = vol;
-    o.connect(g); g.connect(mAMaster); o.start();
-    mANodes.push(o, g);
-}
-
-function _mWind() {
-    const len = mACtx.sampleRate * 3;
-    const buf = mACtx.createBuffer(1, len, mACtx.sampleRate);
-    const d   = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    const src = mACtx.createBufferSource();
-    src.buffer = buf; src.loop = true;
-    const flt = mACtx.createBiquadFilter();
-    flt.type = 'bandpass'; flt.frequency.value = 280; flt.Q.value = 0.35;
-    const wg  = mACtx.createGain(); wg.gain.value = 0.032;
-    const lfo = mACtx.createOscillator(), lfog = mACtx.createGain();
-    lfo.frequency.value = 0.055; lfog.gain.value = 0.014;
-    lfo.connect(lfog); lfog.connect(wg.gain);
-    lfo.start(); src.connect(flt); flt.connect(wg); wg.connect(mAMaster); src.start();
-    mANodes.push(src, flt, wg, lfo, lfog);
-}
-
-// Each melody note plays TWO detuned oscillators (chorus) + tremolo LFO
-function _mNote(freq, wet, dry, vol, dur) {
-    const now = mACtx.currentTime;
-
-    // Envelope
-    const env = mACtx.createGain();
-    env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(vol, now + 0.12);
-    env.gain.setValueAtTime(vol, now + dur * 0.45);
-    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-    // Tremolo (slow volume shimmer ~5Hz)
-    const trem = mACtx.createOscillator(), tremG = mACtx.createGain();
-    trem.frequency.value = 4.8; tremG.gain.value = vol * 0.18;
-    trem.connect(tremG); tremG.connect(env.gain);
-    trem.start(now); trem.stop(now + dur + 0.1);
-
-    // Main oscillator — triangle for warmth
-    const o1 = mACtx.createOscillator();
-    o1.type = 'triangle'; o1.frequency.value = freq;
-    o1.connect(env);
-
-    // Chorus twin — slightly sharp (~6 cents)
-    const o2 = mACtx.createOscillator();
-    o2.type = 'triangle'; o2.frequency.value = freq * 1.0035;
-    const choG = mACtx.createGain(); choG.gain.value = 0.55;
-    o2.connect(choG); choG.connect(env);
-
-    env.connect(wet);   // send to reverb delay
-    env.connect(dry);   // send direct to melody gain
-
-    o1.start(now); o1.stop(now + dur + 0.1);
-    o2.start(now); o2.stop(now + dur + 0.1);
-}
-
-function _mChord(freqs, wet, dry) {
-    freqs.forEach(f => _mNote(f, wet, dry, 0.42, 7));
-}
-
-function stopMenuAudio() {
-    clearInterval(mAMelody); mAMelody = null;
-    mANodes.forEach(n => { try { n.stop ? n.stop() : n.disconnect(); } catch(e) {} });
-    mANodes = [];
-    if (mACtx) { mACtx.close(); mACtx = null; }
-    mAMaster = null;
-}
-
-// SFX run in their own AudioContext (created alongside mACtx on first hover)
-// so the music's compressor never affects their volume
-let sfxCtx = null;
-function _sfx() {
-    // Fallback: if somehow called before initMenuAudio, create on the spot
-    if (!sfxCtx || sfxCtx.state === 'closed') {
-        sfxCtx = new (window.AudioContext || window['webkitAudioContext'])();
-    }
-    return sfxCtx;
-}
-
-// Hover sound — soft rising shimmer
-function playHover() {
-    const ctx = _sfx();
-    const t = ctx.currentTime + 0.005; // small lookahead — never schedule in the past
-    const o = ctx.createOscillator(), g = ctx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(520, t);
-    o.frequency.linearRampToValueAtTime(820, t + 0.07);
-    g.gain.setValueAtTime(0.22, t);
-    g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
-    o.connect(g); g.connect(ctx.destination);
-    o.start(t); o.stop(t + 0.15);
-}
-
-// Click sound — heavy medieval thud + metallic tick
-function playClick() {
-    const ctx = _sfx();
-    const t = ctx.currentTime + 0.005;
-    // Thud
-    const o1 = ctx.createOscillator(), g1 = ctx.createGain();
-    o1.type = 'sine';
-    o1.frequency.setValueAtTime(200, t);
-    o1.frequency.exponentialRampToValueAtTime(55, t + 0.18);
-    g1.gain.setValueAtTime(0.45, t);
-    g1.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
-    o1.connect(g1); g1.connect(ctx.destination);
-    o1.start(t); o1.stop(t + 0.23);
-    // Tick
-    const o2 = ctx.createOscillator(), g2 = ctx.createGain();
-    o2.type = 'square'; o2.frequency.value = 1400;
-    g2.gain.setValueAtTime(0.06, t);
-    g2.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
-    o2.connect(g2); g2.connect(ctx.destination);
-    o2.start(t); o2.stop(t + 0.04);
-}
-
-// Start music on the very first user gesture anywhere on the page
-// (browsers block AudioContext until interaction, but this fires on first click/touch/key)
+// Start audio on the very first user gesture (autoplay policy)
 function _bootAudio() {
-    initMenuAudio();
+    audio.init();
+    audio.startMenuMusic();
     document.removeEventListener('pointerdown', _bootAudio);
     document.removeEventListener('touchstart',  _bootAudio);
     document.removeEventListener('keydown',     _bootAudio);
@@ -816,16 +749,71 @@ document.addEventListener('pointerdown', _bootAudio);
 document.addEventListener('touchstart',  _bootAudio, { passive: true });
 document.addEventListener('keydown',     _bootAudio);
 
-// Attach hover/click SFX only to start-screen elements (not in-game buttons that share classes)
+// Attach hover/click SFX to start-screen elements
 document.querySelectorAll('#start-screen .menu-btn, #start-screen .back-btn, #start-screen .primary-btn, #start-screen .class-card').forEach(el => {
-    el.addEventListener('mouseenter', () => { initMenuAudio(); playHover(); });
-    el.addEventListener('click',      () => { initMenuAudio(); playClick(); });
+    el.addEventListener('mouseenter', () => { audio.init(); playHover(); });
+    el.addEventListener('click',      () => { audio.init(); playClick(); });
 });
 
 // Stop menu audio and show transition overlay when entering the game
 document.getElementById('begin-btn').addEventListener('click', () => {
+    // AUDIO: game_start
+    audio.playMenuStartTransition();
     stopMenuAudio();
     fadeOverlay('in');
+});
+
+// ── Parallax on mouse move ────────────────────────────
+document.getElementById('start-screen').addEventListener('mousemove', e => {
+    const cx = e.clientX / window.innerWidth  - 0.5;
+    const cy = e.clientY / window.innerHeight - 0.5;
+    const mt = document.getElementById('menu-mountains');
+    const ru = document.getElementById('menu-ruins');
+    if (mt) mt.style.transform = `translate(${cx * -8}px, ${cy * -4}px)`;
+    if (ru) ru.style.transform = `translate(${cx * -12}px, ${cy * -6}px)`;
+});
+
+// ── Class sprite mini-renderer ────────────────────────
+function drawMiniSprite(canvas, bodyColor, cloakColor) {
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    // Cloak / lower body
+    ctx.fillStyle = cloakColor;
+    ctx.fillRect(8, 28, 24, 20);
+    // Armor / torso
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(10, 17, 20, 13);
+    // Head (skin)
+    ctx.fillStyle = '#c8a870';
+    ctx.fillRect(12, 6, 16, 12);
+    // Hair / helm
+    ctx.fillStyle = '#2a1508';
+    ctx.fillRect(11, 4, 18, 4);
+    // Eyes
+    ctx.fillStyle = '#100a04';
+    ctx.fillRect(15, 11, 4, 3);
+    ctx.fillRect(21, 11, 4, 3);
+    // Subtle body outline
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(9, 17, 1, 31);
+    ctx.fillRect(30, 17, 1, 31);
+    ctx.fillRect(11, 4, 1, 14);
+    ctx.fillRect(27, 4, 1, 14);
+}
+
+window.addEventListener('load', () => {
+    const classColors = {
+        Warrior: { body: '#c07818', cloak: '#1a0c04' },
+        Rogue:   { body: '#6020a8', cloak: '#0c0c1e' },
+        Wizard:  { body: '#4a6878', cloak: '#0c0c1e' },
+        Cleric:  { body: '#c09010', cloak: '#141210' },
+    };
+    document.querySelectorAll('.card-sprite').forEach(canvas => {
+        const cls = canvas.closest('[data-class]');
+        if (!cls) return;
+        const col = classColors[cls.dataset.class];
+        if (col) drawMiniSprite(canvas, col.body, col.cloak);
+    });
 });
 </script>
 <!-- Load order contract (Pass 10):
@@ -837,6 +825,7 @@ document.getElementById('begin-btn').addEventListener('click', () => {
      and visual-quality load. Violating this order triggers runtime assertions
      in SpriteRenderer.js and visual-quality.js. -->
 <script src="/static/js/game-noise.js"></script>
+<script src="/static/js/event-bus.js"></script>
 <script src="/static/js/narrator.js"></script>
 <script src="/static/js/game-constants.js"></script>
 <script src="/static/js/world.js"></script>
@@ -850,7 +839,6 @@ document.getElementById('begin-btn').addEventListener('click', () => {
 <script src="/static/js/game-loop.js"></script>
 <script src="/static/js/render.js"></script>
 <script src="/static/js/tile-renderer.js"></script>
-<script src="/static/js/TILE_MANIFEST.js"></script>
 <script src="/static/js/SpriteRenderer.js"></script>
 <script src="/static/js/visual-quality.js"></script>
 </body>

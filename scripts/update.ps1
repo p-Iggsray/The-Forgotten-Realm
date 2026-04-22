@@ -123,36 +123,6 @@ function Write-Colored {
     }
 }
 
-# ─── Box rendering ────────────────────────────────────────────────────────────
-function New-Box {
-    param(
-        [string[]]$Lines,
-        [string]$BorderColor  = 'Cyan',
-        [string]$Style        = 'Double',
-        [string]$ContentColor = 'White',
-        [int]$InnerWidth      = 0
-    )
-    if ($Style -eq 'Double') {
-        $tl='/'; $tr='\'; $bl='\'; $br='/'; $h='='; $v='|'
-    } else {
-        $tl='+'; $tr='+'; $bl='+'; $br='+'; $h='-'; $v='|'
-    }
-    if ($InnerWidth -lt 1) {
-        $maxLen = ($Lines | ForEach-Object { $_.Length } | Measure-Object -Maximum).Maximum
-        $InnerWidth = [Math]::Max(48, $maxLen + 2)
-        $InnerWidth = [Math]::Min($InnerWidth, $script:TermWidth - 4)
-    }
-    $bar = $h * $InnerWidth
-    Write-Colored "  $tl$bar$tr" -Color $BorderColor
-    foreach ($line in $Lines) {
-        $padded = $line.PadRight($InnerWidth)
-        if ($padded.Length -gt $InnerWidth) { $padded = $padded.Substring(0, $InnerWidth) }
-        Write-Colored "  $v" -Color $BorderColor -NoNewline
-        Write-Colored $padded -Color $ContentColor -NoNewline
-        Write-Colored $v -Color $BorderColor
-    }
-    Write-Colored "  $bl$bar$br" -Color $BorderColor
-}
 
 # ─── Spinner ──────────────────────────────────────────────────────────────────
 function Invoke-WithSpinner {
