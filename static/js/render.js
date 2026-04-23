@@ -11,13 +11,6 @@ let bgCtx    = bgCanvas.getContext('2d');
 let bgDirty  = true;   // true -> must rebuild before next render
 let _bgCamX  = -1, _bgCamY = -1; // last cam position baked into bgCanvas
 
-// --- Event-driven cached state -------------------------------------------
-let _isBattleActive = false, _isLoading = false;
-eventBus.on('battle:start',     () => { _isBattleActive = true; });
-eventBus.on('battle:end',       () => { _isBattleActive = false; });
-eventBus.on('ui:loading:start', () => { _isLoading = true; });
-eventBus.on('ui:loading:end',   () => { _isLoading = false; });
-
 // --- Public API ----------------------------------------------------------
 function markBgDirty()               { bgDirty = true; }
 function invalidateLightCanvas()     { lightCanvas = null; }
