@@ -37,7 +37,7 @@ class SpriteRenderer {
             'GRASS', 'PATH', 'STONE_PATH', 'WATER',
             'WALL_EXT', 'WALL_INT', 'WALL_DUN', 'CEILING',
             'FLOOR_LIGHT', 'FLOOR_DARK',
-            'TREE', 'DOOR', 'STAIRS', 'TORCH',
+            'TREE', 'DOOR', 'STAIRS', 'TORCH', 'WELL',
         ];
         for (const row of rows) tileRenderer.warmRow(row, ts);
     }
@@ -135,7 +135,24 @@ class SpriteRenderer {
             case Game.TILE.TREE: {
                 // Grass base first, then canopy overlay on top (same composite as game.js)
                 tileRenderer.draw(Game.ctx, 'GRASS', raw & 7, ipx, ipy, Game.TS);
-                tileRenderer.draw(Game.ctx, 'TREE',  (raw >> 4) & 1, ipx, ipy, Game.TS);
+                // Edge trees render ~20% larger than interior trees — gives the village
+                // boundary an overgrown wild feel vs the cultivated centre. Anchored so
+                // the trunk stays grounded on the tile (shift up-left, not centered).
+                const mapW = Game.currentMap.w, mapH = Game.currentMap.h;
+                const isEdge = tx <= 2 || ty <= 2 || tx >= mapW - 3 || ty >= mapH - 3;
+                if (isEdge) {
+                    const scale = 1.2;
+                    const shift = Math.floor(Game.TS * (scale - 1) * 0.5);
+                    const size  = Math.floor(Game.TS * scale);
+                    const canopy = tileRenderer.getCachedVariant('TREE', (raw >> 4) & 1, Game.TS);
+                    if (canopy) {
+                        Game.ctx.drawImage(canopy, ipx - shift, ipy - shift - Math.floor(Game.TS * 0.08), size, size);
+                    } else {
+                        tileRenderer.draw(Game.ctx, 'TREE', (raw >> 4) & 1, ipx, ipy, Game.TS);
+                    }
+                } else {
+                    tileRenderer.draw(Game.ctx, 'TREE', (raw >> 4) & 1, ipx, ipy, Game.TS);
+                }
                 break;
             }
 
@@ -211,6 +228,26 @@ class SpriteRenderer {
                 }
                 if (onWall) Render.drawWallPlaque(ipx, ipy);
                 else        Render.drawSignPost(ipx, ipy);
+                break;
+            }
+
+            case Game.TILE.WELL: {
+                // Base grass under the well so the square edges blend with neighbours
+                tileRenderer.draw(Game.ctx, 'GRASS', raw & 7, ipx, ipy, Game.TS);
+                // Cached stone well sprite
+                tileRenderer.draw(Game.ctx, 'WELL', 0, ipx, ipy, Game.TS);
+                // Live water ripple — one moving highlight pixel inside the well mouth
+                const T = Game.TS;
+                const cx = ipx + Math.floor(T * 0.5);
+                const cy = ipy + Math.floor(T * 0.56);
+                const r = Math.floor(T * 0.22);
+                const phase = Game.timeMs * Game.WELL_RIPPLE_SPEED + tx * 0.9 + ty * 1.3;
+                const dx = Math.round(Game.fastSin(phase)     * r * 0.35);
+                const dy = Math.round(Game.fastSin(phase * 1.7) * r * 0.12);
+                Game.ctx.fillStyle = P.V_WATER_HI;
+                Game.ctx.fillRect(cx + dx, cy + dy, 2, 1);
+                Game.ctx.fillStyle = P.V_WATER_FOAM;
+                Game.ctx.fillRect(cx + dx, cy + dy, 1, 1);
                 break;
             }
 

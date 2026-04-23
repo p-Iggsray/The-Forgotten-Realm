@@ -34,7 +34,7 @@ const PALETTE = Game.PALETTE;
 const ENEMY_DEFS = Game.ENEMY_DEFS;
 const { GRASS:G, DIRT_PATH:P, BUILDING_FLOOR:F, BUILDING_WALL:W, TREE:TR,
         WATER:WA, DOOR:DR, STAIRS:ST, SIGN:SG,
-        STAIRSUP:SU, TORCH:TC, STONE_PATH:SP, VOID:VD } = TILE;
+        STAIRSUP:SU, TORCH:TC, STONE_PATH:SP, VOID:VD, WELL:WL } = TILE;
 
 // Noise functions live in game-noise.js (plain globals: _vhash, _vnoise, _vfbm)
 
@@ -213,6 +213,30 @@ function _placeVillageTransition(m, biome, W, H, rng) {
     }
 }
 
+// ── Village civic props: rocks + fence runs ─────────────────────────────────
+// Appends to the decorations array. Both rocks and fences are walkable
+// (visual-only), so the BFS validator is a sanity check — if a candidate
+// happens to fall on a non-grass tile after procedural biome gen, we skip it.
+// Coordinates are hand-authored against the 48×36 village grid.
+function _placeVillageProps(m, W, H, decs) {
+    const canPlace = (x, y) => (x >= 0 && x < W && y >= 0 && y < H && m[y][x] === G);
+    // ── Scattered rocks ─────────────────────────────────
+    const rocks = [[10,14],[12,22],[33,14],[41,28],[28,21]];
+    for (const [tx, ty] of rocks) {
+        if (canPlace(tx, ty)) decs.push({tx, ty, type:'rock', variant: (tx * 3 + ty) % 3});
+    }
+    // ── Fence runs (horizontal 3-tile spans) ───────────
+    const fenceRuns = [
+        [[16,20],[17,20],[18,20]],
+        [[32,28],[33,28],[34,28]],
+    ];
+    for (const run of fenceRuns) {
+        if (run.every(([x, y]) => canPlace(x, y))) {
+            run.forEach(([tx, ty], i) => decs.push({tx, ty, type:'fence', variant: i}));
+        }
+    }
+}
+
 // ── Phase 5: worn-path classification ───────────────────────────────────────
 // Returns a Uint8Array (one byte per tile, same WxH layout as tiles).
 //   0 = no worn effect
@@ -323,13 +347,15 @@ function buildVillageTiles() {
     fill(21,1,22,34, SP);
     fill(1,16,46,17, SP);
 
-    // ── 4. Pond (NW decorative water feature) ────────────────
-    //  Water: x=13–19, y=3–12  (safely west of N–S road x=21)
-    fill(13,3,19,12, WA);
-    fill(12,2,20,2,  SP);   // north rim path
-    fill(12,13,20,13,SP);   // south rim path
-    fill(12,2,12,13, SP);   // west rim path
-    // east rim is x=20, adjacent to N–S road at x=21 (already path)
+    // ── 4. Central Well (lore: "central well — meeting point, gossip hub") ──
+    // Replaces the old decorative pond. Well tile is blocking; surrounded by a
+    // stone courtyard so the landmark reads as civic infrastructure.
+    // The previous pond bounds (13,3)–(19,12) revert to biome-generated grass.
+    // Courtyard: 5-tile cross of stone around the well, then the well tile itself.
+    const _wellX = 16, _wellY = 7;
+    fill(_wellX-2, _wellY-1, _wellX+2, _wellY+1, SP);  // 5×3 horizontal plaza band
+    fill(_wellX-1, _wellY-2, _wellX+1, _wellY+2, SP);  // 3×5 vertical plaza band
+    s(_wellX, _wellY, WL);
 
     // ── 5. Buildings ──────────────────────────────────────────
     // Layout (verified non-overlapping, no road tiles covered):
@@ -403,9 +429,11 @@ function buildVillageTiles() {
     fill(41,18,42,18, SP);
 
     // ── 7. Signs ────────────────────────────────────────────
-    s(21,8,  SG);   // village welcome sign (on N–S road, y=8)
-    s(21,32, SG);   // dungeon warning sign
-    s(8,  8, SG);   // notice board (village_alert target)
+    // Signs sit on grass ADJACENT to the main road — readable from the spine
+    // without blocking traffic. Notice board stays on Elder's Hall wall.
+    s(20,8,  SG);   // village welcome sign — grass west of N–S spine (former pond area)
+    s(23,32, SG);   // dungeon warning sign — grass east of spine, just north of stairs
+    s(8,  8, SG);   // notice board — wall plaque inside Elder's Hall footprint
 
     // ── 8. Dungeon stairs ────────────────────────────────────
     s(21,34, ST);
@@ -415,6 +443,8 @@ function buildVillageTiles() {
     // Run AFTER all roads/buildings are finalised so we never place a decoration
     // under a WALL or on a PATH road tile.
     _villageDecorations = _placeDecorations(m, _biome, W_, H_, _rng(913));
+    // Non-blocking civic props: rocks + fence runs. Appends to decorations.
+    _placeVillageProps(m, W_, H_, _villageDecorations);
 
     // ── 10. Worn-path map (Phase 5) ───────────────────────────
     // Classify high-traffic PATH tiles for the lighter overlay drawn in bgCanvas.
@@ -743,8 +773,8 @@ const VEYLA_NPCS = [
 ];
 
 const VILLAGE_SIGNS = [
-    { x:21, y:8, text:'— ELDORIA —\n\nFounded in the Year of the Third Moon.\nPopulation: 23.\n\n"May the Old Gods light your path."' },
-    { x:21, y:32, text:'THE CURSED MINES\n\n"Turn back. Whatever you hear below,\ndo not answer it."\n\n— scratched into the stone by a shaking hand', type:'stairs' },
+    { x:20, y:8, text:'— ELDORIA —\n\nFounded in the Year of the Third Moon.\nPopulation: 23.\n\n"May the Old Gods light your path."' },
+    { x:23, y:32, text:'THE CURSED MINES\n\n"Turn back. Whatever you hear below,\ndo not answer it."\n\n— scratched into the stone by a shaking hand', type:'stairs' },
     { x:8,  y:8, text:'Notice Board\n\nNo current announcements.' },
 ];
 
@@ -761,6 +791,45 @@ const DUNGEON_ITEMS = [
       questRequired:'quest_brothers_fate_given',
       questComplete:'quest_brothers_fate_complete' },
 ];
+
+// ═══════════════════════════════════════════════════════
+//  NPC DESTINATIONS  (village-map tile coordinates for lead behavior)
+//  Keys are referenced by LLM via NPC_BEHAVIOR:lead:[key].
+//  Coordinates are walkable arrival tiles — the well and mines-stairs
+//  are themselves non-arrival (blocking / trigger), so arrival is the
+//  adjacent walkable tile.
+// ═══════════════════════════════════════════════════════
+const NPC_DESTINATIONS = {
+    elder:          { x: 6,  y: 12, label: "Elder Maren's hall" },
+    blacksmith:     { x: 36, y: 12, label: "Daran's forge" },
+    inn:            { x: 6,  y: 20, label: "the Wanderer's Rest inn" },
+    veyla:          { x: 41, y: 20, label: "the traveler's room" },
+    well:           { x: 17, y: 7,  label: "the village well" },
+    mines_entrance: { x: 22, y: 31, label: "the Cursed Mines entrance" },
+};
+window.Game.NPC_DESTINATIONS = NPC_DESTINATIONS;
+
+// Behavior-authoring data — only Rowan can be led / can follow.
+// Interior NPCs and the ghost have none (enforced server-side too).
+const NPC_LEAD_COMPETENCE = {
+    guide:      Object.keys(NPC_DESTINATIONS),
+    elder:      ['mines_entrance', 'well'],
+    blacksmith: [],
+    traveler:   ['mines_entrance'],
+    ghost:      [],
+};
+const NPC_FOLLOW_ALLOWED = new Set(['guide']);
+
+// Rowan's ambient patrol route — waypoints are walkable village tiles
+// bracketing the central well plaza. Route loops; pauseMs is per-waypoint.
+const NPC_PATROL_ROUTES = {
+    guide: [
+        { x: 21, y: 15, pauseMs: 2000 },  // spawn
+        { x: 17, y: 8,  pauseMs: 4000 },  // near the well
+        { x: 25, y: 10, pauseMs: 3000 },  // central path
+        { x: 21, y: 15, pauseMs: 2000 },  // home
+    ],
+};
 
 // ═══════════════════════════════════════════════════════
 //  LORE ENTRIES
@@ -1215,9 +1284,9 @@ function NPCS_OK(nx, ny) {
     return !currentMap.npcs.some(n => n.x === nx && n.y === ny);
 }
 
-function isTileOccupied(x, y, excludingEnemy) {
-    if (currentMap.npcs.some(n => n.x === x && n.y === y)) return true;
-    if (currentMap.enemies?.some(e => e !== excludingEnemy && e.alive && e.x === x && e.y === y)) return true;
+function isTileOccupied(x, y, excludingEntity) {
+    if (currentMap.npcs.some(n => n !== excludingEntity && n.x === x && n.y === y)) return true;
+    if (currentMap.enemies?.some(e => e !== excludingEntity && e.alive && e.x === x && e.y === y)) return true;
     return false;
 }
 
@@ -1252,6 +1321,19 @@ function changeMap(mapId, sx, sy) {
     const fromId    = Game.currentMap?.id ?? null;
     const fromScene = Game.activeScene;
 
+    // Any NPC in the departing map currently following the player switches
+    // to 'returning' (NPCs don't cross maps; they walk home).
+    if (Game.currentMap?.npcs) {
+        for (const n of Game.currentMap.npcs) {
+            if (n._hydrated && (n.behavior === 'follow' || n.behavior === 'lead')) {
+                n.behavior = 'returning';
+                n.behaviorTarget = null;
+                n.path = [];
+                n.pathRecalcTimer = 0;
+            }
+        }
+    }
+
     // EXIT — leave current scene
     fromScene?.onExit?.(mapId);
 
@@ -1261,6 +1343,7 @@ function changeMap(mapId, sx, sy) {
     // TRANSITIONAL — swap core state
     currentMap = Game.currentMap = MAPS[mapId];
     buildVariantMap(currentMap);
+    hydrateMapNPCs(currentMap);
     player.x   = sx !== undefined ? sx : currentMap.playerStart.x;
     player.y   = sy !== undefined ? sy : currentMap.playerStart.y;
     player.facing = 'down';
@@ -1351,6 +1434,462 @@ function updateEnemies(dt) {
 }
 
 function isAdjacent(nx,ny){return Math.abs(nx-player.x)+Math.abs(ny-player.y)===1;}
+
+// ═══════════════════════════════════════════════════════
+//  NPC BEHAVIOR & MOVEMENT
+//
+//  Behavior set:  idle | follow | lead | patrol | arrived | stationary | returning
+//  Intent token arrives from the LLM (NPC_BEHAVIOR:[verb]:[target]),
+//  declared once per dialogue turn, executed tile-by-tile here.
+//
+//  See: plan  before-writing-one-important-sharded-nebula.md
+// ═══════════════════════════════════════════════════════
+
+const _NPC_DIR_FROM_DELTA = (dx, dy) =>
+    dy < 0 ? 'up' : dy > 0 ? 'down' : dx < 0 ? 'left' : 'right';
+
+function _npcRandBetween(a, b) { return a + Math.random() * (b - a); }
+
+function hydrateNPC(npc) {
+    if (npc._hydrated) return;
+    const TS_ = Game.TS;
+    npc.behavior       = 'idle';
+    npc.behaviorTarget = null;
+    npc.facing         = 'down';
+    npc.walkPhase      = 0;
+    npc.isMoving       = false;
+    npc.renderX        = npc.x * TS_;
+    npc.renderY        = npc.y * TS_;
+    npc.prevX          = npc.renderX;
+    npc.prevY          = npc.renderY;
+    npc.moveT          = 1;
+    npc.moveDuration   = Game.NPC_MOVE_DURATION_MS;
+    npc.path           = [];
+    npc.pathRecalcTimer= Math.random() * Game.NPC_PATH_RECALC_INTERVAL_MS;
+    npc.stepTimer      = Math.random() * Game.NPC_STEP_INTERVAL_MS;
+    npc.blockedTimer   = 0;
+    npc.spawnX         = npc.x;
+    npc.spawnY         = npc.y;
+    npc.waitTimer      = _npcRandBetween(Game.NPC_WANDER_PAUSE_MIN_MS, Game.NPC_WANDER_PAUSE_MAX_MS);
+    npc.patrolRoute    = NPC_PATROL_ROUTES[npc.id] || null;
+    npc.patrolIndex    = 0;
+    npc.leadTilesSinceLastPause = 0;
+    npc.leadPauseTimer = 0;
+    npc.arrivedTimer   = 0;
+    npc._hydrated      = true;
+
+    // Ghost is permanently stationary (narrative anchor)
+    if (npc.id === 'ghost') npc.behavior = 'stationary';
+}
+
+function hydrateMapNPCs(map) {
+    if (!map || !map.npcs) return;
+    for (const n of map.npcs) hydrateNPC(n);
+}
+
+// ─── A* pathfinder ───────────────────────────────────────────────────────────
+// 4-connected grid, Manhattan heuristic, bounded by NPC_PATH_MAX_TILES.
+// Target tile itself is allowed even if the goal is the player's tile (caller
+// should pass a tile adjacent to the player for follow behavior).
+function findPath(fromX, fromY, toX, toY, excludingNpc) {
+    if (fromX === toX && fromY === toY) return [];
+    const w = currentMap.w, h = currentMap.h;
+    if (toX < 0 || toY < 0 || toX >= w || toY >= h) return [];
+    const maxTiles = Game.NPC_PATH_MAX_TILES;
+    const startKey = fromY * w + fromX;
+
+    const gScore = new Map(); gScore.set(startKey, 0);
+    const cameFrom = new Map();
+    // Open set as a sorted-on-insert array (small frontier, n<=30*30)
+    const open = [{ x: fromX, y: fromY, f: Math.abs(toX - fromX) + Math.abs(toY - fromY) }];
+    const closed = new Set();
+    let expanded = 0;
+    const budget = maxTiles * maxTiles; // ~900 nodes max
+
+    while (open.length) {
+        // pop lowest f
+        let bi = 0;
+        for (let i = 1; i < open.length; i++) if (open[i].f < open[bi].f) bi = i;
+        const cur = open.splice(bi, 1)[0];
+        const ck = cur.y * w + cur.x;
+        if (closed.has(ck)) continue;
+        closed.add(ck);
+
+        if (cur.x === toX && cur.y === toY) {
+            const path = [];
+            let k = ck;
+            while (cameFrom.has(k)) {
+                const px = k % w, py = (k - px) / w;
+                path.push({ x: px, y: py });
+                k = cameFrom.get(k);
+            }
+            path.reverse();
+            return path.length <= maxTiles ? path : [];
+        }
+
+        if (++expanded > budget) return [];
+        const g = gScore.get(ck);
+        if (g >= maxTiles) continue;
+
+        const neighbors = [
+            { x: cur.x,     y: cur.y - 1 },
+            { x: cur.x,     y: cur.y + 1 },
+            { x: cur.x - 1, y: cur.y     },
+            { x: cur.x + 1, y: cur.y     },
+        ];
+        for (const n of neighbors) {
+            if (n.x < 0 || n.y < 0 || n.x >= w || n.y >= h) continue;
+            const nk = n.y * w + n.x;
+            if (closed.has(nk)) continue;
+            const tile = currentMap.tiles[n.y][n.x];
+            if (!WALKABLE.has(tile)) continue;
+            // Allow stepping onto the explicit goal tile even if occupied — rare, but
+            // prevents "unreachable" for leads where the arrival tile briefly has someone.
+            const isGoal = (n.x === toX && n.y === toY);
+            if (!isGoal) {
+                if (isTileOccupied(n.x, n.y, excludingNpc)) continue;
+                if (n.x === player.x && n.y === player.y) continue;
+            }
+            const tentative = g + 1;
+            if (tentative > maxTiles) continue;
+            if (!gScore.has(nk) || tentative < gScore.get(nk)) {
+                gScore.set(nk, tentative);
+                cameFrom.set(nk, ck);
+                const f = tentative + Math.abs(toX - n.x) + Math.abs(toY - n.y);
+                open.push({ x: n.x, y: n.y, f });
+            }
+        }
+    }
+    return [];
+}
+
+// ─── Stepping / animation helpers ────────────────────────────────────────────
+function _npcFaceTowardPlayer(npc) {
+    const dx = player.x - npc.x, dy = player.y - npc.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+        if (dx !== 0) npc.facing = dx < 0 ? 'left' : 'right';
+    } else {
+        if (dy !== 0) npc.facing = dy < 0 ? 'up' : 'down';
+    }
+}
+
+function stepNPC(npc, nx, ny) {
+    if (nx < 0 || ny < 0 || nx >= currentMap.w || ny >= currentMap.h) return false;
+    const tile = currentMap.tiles[ny][nx];
+    if (!WALKABLE.has(tile)) return false;
+    if (isTileOccupied(nx, ny, npc)) return false;
+    if (player.x === nx && player.y === ny) return false;
+    const dx = nx - npc.x, dy = ny - npc.y;
+    npc.facing    = _NPC_DIR_FROM_DELTA(dx, dy);
+    npc.prevX     = npc.renderX;
+    npc.prevY     = npc.renderY;
+    npc.x         = nx;
+    npc.y         = ny;
+    npc.moveT     = 0;
+    npc.isMoving  = true;
+    npc.walkPhase += Math.PI;
+    return true;
+}
+
+function updateNPCAnim(npc, dt) {
+    if (npc.moveT >= 1) {
+        const TS_ = Game.TS;
+        npc.renderX  = npc.x * TS_;
+        npc.renderY  = npc.y * TS_;
+        npc.isMoving = false;
+        return;
+    }
+    npc.moveT = Math.min(1, npc.moveT + dt / npc.moveDuration);
+    const t = npc.moveT;
+    const e = t * t * (3 - 2 * t);
+    const TS_ = Game.TS;
+    npc.renderX = npc.prevX + (npc.x * TS_ - npc.prevX) * e;
+    npc.renderY = npc.prevY + (npc.y * TS_ - npc.prevY) * e;
+}
+
+function _npcPickWanderStep(npc) {
+    const maxDist = currentMap.id === 'village'
+        ? Game.NPC_WANDER_MAX_DISTANCE
+        : Game.NPC_WANDER_MAX_DISTANCE_SMALL;
+    const options = [
+        { x: npc.x,     y: npc.y - 1 },
+        { x: npc.x,     y: npc.y + 1 },
+        { x: npc.x - 1, y: npc.y     },
+        { x: npc.x + 1, y: npc.y     },
+    ];
+    // Filter to walkable + within wander radius of spawn
+    const ok = options.filter(o => {
+        if (o.x < 0 || o.y < 0 || o.x >= currentMap.w || o.y >= currentMap.h) return false;
+        if (!WALKABLE.has(currentMap.tiles[o.y][o.x])) return false;
+        if (isTileOccupied(o.x, o.y, npc)) return false;
+        if (o.x === player.x && o.y === player.y) return false;
+        if (Math.abs(o.x - npc.spawnX) + Math.abs(o.y - npc.spawnY) > maxDist) return false;
+        return true;
+    });
+    if (!ok.length) return null;
+    return ok[Math.floor(Math.random() * ok.length)];
+}
+
+function _npcAtTile(npc, x, y) { return npc.x === x && npc.y === y; }
+
+function _npcBehaviorIdle(npc, dt) {
+    if (npc.isMoving) return;
+    npc.waitTimer -= dt;
+    if (npc.waitTimer > 0) return;
+    const step = _npcPickWanderStep(npc);
+    if (step) stepNPC(npc, step.x, step.y);
+    npc.waitTimer = _npcRandBetween(Game.NPC_WANDER_PAUSE_MIN_MS, Game.NPC_WANDER_PAUSE_MAX_MS);
+}
+
+function _npcBehaviorFollow(npc, dt) {
+    if (npc.isMoving) return;
+    const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+    if (dist <= Game.NPC_FOLLOW_DISTANCE) {
+        _npcFaceTowardPlayer(npc);
+        return;
+    }
+    npc.pathRecalcTimer -= dt;
+    if (npc.pathRecalcTimer <= 0 || !npc.path.length) {
+        // Pick an adjacent-to-player tile as the goal
+        const goals = [
+            { x: player.x,     y: player.y - 1 },
+            { x: player.x,     y: player.y + 1 },
+            { x: player.x - 1, y: player.y     },
+            { x: player.x + 1, y: player.y     },
+        ].filter(g => g.x >= 0 && g.y >= 0 && g.x < currentMap.w && g.y < currentMap.h
+                   && WALKABLE.has(currentMap.tiles[g.y][g.x]));
+        // Prefer the one closest to the NPC
+        goals.sort((a, b) => (Math.abs(a.x - npc.x) + Math.abs(a.y - npc.y))
+                            - (Math.abs(b.x - npc.x) + Math.abs(b.y - npc.y)));
+        npc.path = [];
+        for (const g of goals) {
+            const p = findPath(npc.x, npc.y, g.x, g.y, npc);
+            if (p.length) { npc.path = p; break; }
+        }
+        npc.pathRecalcTimer = Game.NPC_PATH_RECALC_INTERVAL_MS + Math.random() * 100;
+    }
+    if (!npc.path.length) return;
+    const next = npc.path[0];
+    if (stepNPC(npc, next.x, next.y)) {
+        npc.path.shift();
+        npc.blockedTimer = 0;
+    } else {
+        npc.blockedTimer += dt;
+        if (npc.blockedTimer >= Game.NPC_PATH_BLOCKED_WAIT_MS) {
+            npc.path = [];
+            npc.blockedTimer = 0;
+            npc.pathRecalcTimer = 0;
+        }
+    }
+}
+
+function _npcBehaviorLead(npc, dt) {
+    if (!npc.behaviorTarget) { npc.behavior = 'idle'; return; }
+    const tgt = npc.behaviorTarget;
+
+    // Arrived check
+    const distToTarget = Math.abs(tgt.x - npc.x) + Math.abs(tgt.y - npc.y);
+    if (distToTarget <= Game.NPC_LEAD_ARRIVAL_DISTANCE) {
+        npc.behavior = 'arrived';
+        npc.arrivedTimer = 0;
+        npc.path = [];
+        _npcFaceTowardPlayer(npc);
+        return;
+    }
+
+    if (npc.isMoving) return;
+
+    // Pause every N tiles to let the player catch up
+    if (npc.leadPauseTimer > 0) {
+        npc.leadPauseTimer -= dt;
+        _npcFaceTowardPlayer(npc);
+        const playerDist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+        if (playerDist > Game.NPC_LEAD_PLAYER_CATCHUP_RADIUS) return; // wait for player
+        if (npc.leadPauseTimer > 0) return;
+        npc.leadPauseTimer = 0;
+        npc.leadTilesSinceLastPause = 0;
+    }
+
+    npc.pathRecalcTimer -= dt;
+    if (npc.pathRecalcTimer <= 0 || !npc.path.length) {
+        npc.path = findPath(npc.x, npc.y, tgt.x, tgt.y, npc);
+        npc.pathRecalcTimer = Game.NPC_PATH_RECALC_INTERVAL_MS + Math.random() * 100;
+    }
+    if (!npc.path.length) {
+        npc.blockedTimer += dt;
+        if (npc.blockedTimer >= Game.NPC_PATH_BLOCKED_WAIT_MS) {
+            npc.behavior = 'returning';
+            npc.blockedTimer = 0;
+        }
+        return;
+    }
+    const next = npc.path[0];
+    if (stepNPC(npc, next.x, next.y)) {
+        npc.path.shift();
+        npc.blockedTimer = 0;
+        npc.leadTilesSinceLastPause++;
+        if (npc.leadTilesSinceLastPause >= Game.NPC_LEAD_PAUSE_EVERY_TILES) {
+            npc.leadPauseTimer = Game.NPC_LEAD_PAUSE_DURATION_MS;
+        }
+    } else {
+        npc.blockedTimer += dt;
+        if (npc.blockedTimer >= Game.NPC_PATH_BLOCKED_WAIT_MS) {
+            npc.path = [];
+            npc.blockedTimer = 0;
+        }
+    }
+}
+
+function _npcBehaviorPatrol(npc, dt) {
+    if (!npc.patrolRoute || !npc.patrolRoute.length) { npc.behavior = 'idle'; return; }
+    if (npc.isMoving) return;
+    const wp = npc.patrolRoute[npc.patrolIndex];
+    if (_npcAtTile(npc, wp.x, wp.y)) {
+        // Arm the pause timer once when first arriving at this waypoint.
+        if (!npc._patrolPaused) {
+            npc.waitTimer = wp.pauseMs || 1500;
+            npc._patrolPaused = true;
+        }
+        if (npc.waitTimer > 0) { npc.waitTimer -= dt; return; }
+        npc.patrolIndex = (npc.patrolIndex + 1) % npc.patrolRoute.length;
+        npc._patrolPaused = false;
+        npc.path = [];
+        return;
+    }
+    npc.pathRecalcTimer -= dt;
+    if (npc.pathRecalcTimer <= 0 || !npc.path.length) {
+        npc.path = findPath(npc.x, npc.y, wp.x, wp.y, npc);
+        npc.pathRecalcTimer = Game.NPC_PATH_RECALC_INTERVAL_MS + Math.random() * 100;
+    }
+    if (!npc.path.length) return;
+    const next = npc.path[0];
+    if (stepNPC(npc, next.x, next.y)) {
+        npc.path.shift();
+        npc.blockedTimer = 0;
+    } else {
+        npc.blockedTimer += dt;
+        if (npc.blockedTimer >= Game.NPC_PATH_BLOCKED_WAIT_MS) {
+            npc.path = [];
+            npc.blockedTimer = 0;
+        }
+    }
+}
+
+function _npcBehaviorArrived(npc, dt) {
+    _npcFaceTowardPlayer(npc);
+    npc.arrivedTimer += dt;
+    if (npc.arrivedTimer >= Game.NPC_ARRIVED_TIMEOUT_MS) {
+        npc.behavior = 'returning';
+        npc.arrivedTimer = 0;
+    }
+}
+
+function _npcBehaviorStationary(npc) {
+    const dist = Math.abs(player.x - npc.x) + Math.abs(player.y - npc.y);
+    if (dist <= 3) _npcFaceTowardPlayer(npc);
+}
+
+function _npcBehaviorReturning(npc, dt) {
+    if (npc.isMoving) return;
+    if (_npcAtTile(npc, npc.spawnX, npc.spawnY)) {
+        npc.behavior = 'idle';
+        npc.facing = 'down';
+        npc.path = [];
+        npc.waitTimer = _npcRandBetween(Game.NPC_WANDER_PAUSE_MIN_MS, Game.NPC_WANDER_PAUSE_MAX_MS);
+        return;
+    }
+    npc.pathRecalcTimer -= dt;
+    if (npc.pathRecalcTimer <= 0 || !npc.path.length) {
+        npc.path = findPath(npc.x, npc.y, npc.spawnX, npc.spawnY, npc);
+        npc.pathRecalcTimer = Game.NPC_PATH_RECALC_INTERVAL_MS + Math.random() * 100;
+    }
+    if (!npc.path.length) return;
+    const next = npc.path[0];
+    if (stepNPC(npc, next.x, next.y)) {
+        npc.path.shift();
+        npc.blockedTimer = 0;
+    } else {
+        npc.blockedTimer += dt;
+        if (npc.blockedTimer >= Game.NPC_PATH_BLOCKED_WAIT_MS) {
+            npc.behavior = 'idle';
+            npc.blockedTimer = 0;
+        }
+    }
+}
+
+function updateNPCBehavior(npc, dt) {
+    switch (npc.behavior) {
+        case 'idle':       _npcBehaviorIdle(npc, dt); break;
+        case 'follow':     _npcBehaviorFollow(npc, dt); break;
+        case 'lead':       _npcBehaviorLead(npc, dt); break;
+        case 'patrol':     _npcBehaviorPatrol(npc, dt); break;
+        case 'arrived':    _npcBehaviorArrived(npc, dt); break;
+        case 'stationary': _npcBehaviorStationary(npc); break;
+        case 'returning':  _npcBehaviorReturning(npc, dt); break;
+    }
+}
+
+function updateNPCs(dt) {
+    if (battleSystem.isActive() || transition.active || ui.sign || ui.paused || ui.loading) return;
+    if (!currentMap.npcs) return;
+    for (const npc of currentMap.npcs) {
+        if (!npc._hydrated) hydrateNPC(npc);
+        // Freeze the NPC currently being talked to (matches ambient suppression pattern)
+        if (ui.dialogue === npc) { _npcFaceTowardPlayer(npc); updateNPCAnim(npc, dt); continue; }
+        updateNPCBehavior(npc, dt);
+        updateNPCAnim(npc, dt);
+    }
+}
+
+// ─── Behavior token dispatch (called from game-ui.js _applySignalTokens) ─────
+function applyNPCBehavior(npc, behavior, target) {
+    if (!npc) return;
+    if (!npc._hydrated) hydrateNPC(npc);
+    const prev = npc.behavior;
+    npc.path = [];
+    npc.blockedTimer = 0;
+    npc.pathRecalcTimer = 0;
+    npc.leadTilesSinceLastPause = 0;
+    npc.leadPauseTimer = 0;
+    npc.arrivedTimer = 0;
+
+    switch (behavior) {
+        case 'follow':
+            npc.behavior = 'follow';
+            npc.behaviorTarget = null;
+            break;
+        case 'lead': {
+            const dest = target && NPC_DESTINATIONS[target];
+            if (!dest) { npc.behavior = 'idle'; break; }
+            npc.behavior = 'lead';
+            npc.behaviorTarget = { x: dest.x, y: dest.y, key: target, label: dest.label };
+            break;
+        }
+        case 'idle':
+            npc.behavior = 'idle';
+            npc.behaviorTarget = null;
+            npc.waitTimer = _npcRandBetween(Game.NPC_WANDER_PAUSE_MIN_MS, Game.NPC_WANDER_PAUSE_MAX_MS);
+            break;
+        case 'stationary':
+            npc.behavior = 'stationary';
+            npc.behaviorTarget = null;
+            break;
+        case 'patrol':
+            if (npc.patrolRoute && npc.patrolRoute.length) {
+                npc.behavior = 'patrol';
+                npc.patrolIndex = 0;
+            } else {
+                npc.behavior = 'idle';
+            }
+            break;
+        default:
+            return;
+    }
+    if (typeof eventBus !== 'undefined') {
+        eventBus.emit('npc:behavior:changed', { npcId: npc.id, behavior: npc.behavior, target, prev });
+    }
+}
+window.Game.applyNPCBehavior = applyNPCBehavior;
 
 // ─── Ambient NPC speech bubbles ─────────────────────────────────────────────
 const _AMB_IDLE_MS    = 7200;
@@ -1692,7 +2231,14 @@ function startGame(name,charClass) {
         console.assert(map.items.length === 0 || id === 'village',
             `[startGame] ${id}.items not empty after reset — check resetWorldState()`);
     }
-    [...GUIDE_NPCS,...ELDER_NPCS,...BLACKSMITH_NPCS,...VEYLA_NPCS,...DUNGEON_NPCS].forEach(n => { delete n._amb; });
+    [...GUIDE_NPCS,...ELDER_NPCS,...BLACKSMITH_NPCS,...VEYLA_NPCS,...DUNGEON_NPCS].forEach(n => {
+        delete n._amb;
+        n.x = n.spawnX ?? n.x;
+        n.y = n.spawnY ?? n.y;
+        n._hydrated = false;
+    });
+    // Re-hydrate NPCs on every map so behavior state resets at spawn tiles.
+    for (const map of Object.values(MAPS)) hydrateMapNPCs(map);
     audio.startMusic();
     startLoop();
     // Black intro sequence — fades out after the cinematic lines

@@ -83,6 +83,25 @@ VALID_AREAS = {
     'int_tavern', 'int_market', 'int_cottage', 'int_chapel', 'int_veyla',
 }
 
+# ── NPC behavior tokens ───────────────────────────────────────────────────────
+# Mirrors the client-side NPC_DESTINATIONS registry in static/js/game.js.
+# Only keys in this dict are valid NPC_BEHAVIOR:lead:[target] arguments.
+NPC_DESTINATION_KEYS = {
+    'elder', 'blacksmith', 'inn', 'veyla', 'well', 'mines_entrance',
+}
+# Per-NPC competence — what destinations each NPC is allowed to lead to.
+# Empty set = cannot lead anywhere; the server silently drops invalid leads.
+NPC_LEAD_COMPETENCE = {
+    'guide':      set(NPC_DESTINATION_KEYS),
+    'elder':      {'mines_entrance', 'well'},
+    'blacksmith': set(),
+    'traveler':   {'mines_entrance'},
+    'ghost':      set(),
+}
+# Only Rowan can be told to follow. Everyone else refuses in character.
+NPC_FOLLOW_ALLOWED = {'guide'}
+VALID_NPC_BEHAVIORS = {'idle', 'stationary', 'patrol', 'follow', 'lead'}
+
 # ── NPC session memory ────────────────────────────────────────────────────────
 
 SESSION_TTL_SECONDS = 7200
@@ -225,6 +244,7 @@ _TOKEN_LINE_RE = re.compile(
     r'|WORLD_EVENT:[A-Za-z0-9_]+'
     r'|REVEAL_LORE:[A-Za-z0-9_]+'
     r'|REPUTATION_CHANGE:[A-Za-z0-9_]+:[\+\-]?\d+'
+    r'|NPC_BEHAVIOR:[A-Za-z_]+(?::[A-Za-z0-9_]+)?'
     r'|OPTIONS:\[.*\])\s*$',
     re.IGNORECASE
 )
@@ -236,11 +256,56 @@ def _fallback_line(npc_id):
     return _rand.choice(pool)
 
 
-def _done(session_id, dialogue, quest_given, ended, options, give_item, unlock_area, world_event, reveal_lore, reputation_change):
+def _done(session_id, dialogue, quest_given, ended, options, give_item, unlock_area, world_event, reveal_lore, reputation_change, npc_behavior=None):
     return {"done": True, "dialogue": dialogue, "quest_given": quest_given, "ended": ended,
             "session_id": session_id, "give_item": give_item, "unlock_area": unlock_area,
             "world_event": world_event, "reveal_lore": reveal_lore,
-            "reputation_change": reputation_change, "options": options}
+            "reputation_change": reputation_change, "options": options,
+            "npc_behavior": npc_behavior}
+
+
+def _validate_npc_behavior(npc_id, verb, target):
+    """Returns a sanitized {behavior, target} dict or None if invalid."""
+    if verb not in VALID_NPC_BEHAVIORS:
+        return None
+    if verb == 'follow':
+        if npc_id not in NPC_FOLLOW_ALLOWED:
+            return None
+        return {'behavior': 'follow', 'target': None}
+    if verb == 'lead':
+        if not target:
+            return None
+        allowed = NPC_LEAD_COMPETENCE.get(npc_id, set())
+        if target not in allowed:
+            return None
+        return {'behavior': 'lead', 'target': target}
+    if verb == 'patrol':
+        # Patrol routes only exist for Rowan today; silently drop for others.
+        if npc_id != 'guide':
+            return None
+        return {'behavior': 'patrol', 'target': None}
+    # idle / stationary — universally allowed
+    return {'behavior': verb, 'target': None}
+
+
+def _npc_behavior_prompt_block(npc_id):
+    """Builds the NPC_BEHAVIOR rules section injected into each NPC's system prompt."""
+    lead_set = NPC_LEAD_COMPETENCE.get(npc_id, set())
+    lead_list = ', '.join(sorted(lead_set)) if lead_set else '(none — refuse leading in character)'
+    follow_note = ('You CAN follow the player when asked.' if npc_id in NPC_FOLLOW_ALLOWED
+                   else 'You CANNOT follow. If asked, refuse in character and do not emit a behavior token.')
+    return (
+        "NPC BEHAVIOR TOKENS — movement commands from the player:\n"
+        f"- KNOWN DESTINATIONS you can lead to: {lead_list}\n"
+        f"- {follow_note}\n"
+        "- NPC_BEHAVIOR:follow — only if allowed above, when the player asks you to come with them.\n"
+        "- NPC_BEHAVIOR:lead:[destination_key] — only if destination is in the list above.\n"
+        "- NPC_BEHAVIOR:idle — when the player dismisses you or you're parting ways.\n"
+        "- NPC_BEHAVIOR:stationary — when the player tells you to wait or stay put.\n"
+        "- NPC_BEHAVIOR:patrol — only if you have a patrol route (guide only).\n"
+        "- Emit at most ONE NPC_BEHAVIOR token per reply.\n"
+        "- Do NOT emit behavior tokens unprompted — only when the player explicitly requests movement."
+    )
 
 WORLD_CONTEXT = """
 Eldoria is a mining village of roughly sixty souls, sitting on a low rise above the southern
@@ -627,6 +692,7 @@ _SHORT_SIGNAL_TOKENS = (
     "SIGNAL TOKENS (end of reply only, never say aloud): "
     "QUEST_GIVEN | END_CONVERSATION | GIVE_ITEM:[id] | UNLOCK_AREA:[key] | "
     "WORLD_EVENT:[key] | REVEAL_LORE:[key] | REPUTATION_CHANGE:{npc_id}:[+1/-1] | "
+    "NPC_BEHAVIOR:[verb(:target)] | "
     'OPTIONS:["opt1","opt2"]'
 )
 
@@ -848,7 +914,9 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
 - REVEAL_LORE:[key] — when sharing secret world history. Keys: hollow_king, the_seal, ancient_war, edrea_fever, henrick_fate.
 - REPUTATION_CHANGE:{npc_id}:[+1 or -1] — after a meaningful exchange. One per turn only.
 - OPTIONS:["option 1","option 2","option 3"] — optionally suggest 2–3 short player responses at the very end of your reply. Use when the player may not know what to say next. Do NOT include OPTIONS when you also include END_CONVERSATION.
-- REPUTATION NOTE: Only use REPUTATION_CHANGE:{npc_id}:-1 if the player was explicitly rude, dismissive, or mocking. Asking awkward questions, being confused, responding briefly, or asking about difficult topics does NOT deserve a reputation penalty."""
+- REPUTATION NOTE: Only use REPUTATION_CHANGE:{npc_id}:-1 if the player was explicitly rude, dismissive, or mocking. Asking awkward questions, being confused, responding briefly, or asking about difficult topics does NOT deserve a reputation penalty.
+
+""" + _npc_behavior_prompt_block(npc_id)
 
         if npc_id == "guide" and not has_summary:
             opener = (
@@ -877,6 +945,7 @@ SIGNAL TOKENS — append any that apply on their own lines at the END of your re
             f"{_NPC_SHORT_PERSONALITY.get(npc_id, 'A villager of Eldoria.')}\n"
             f"{_CHARACTER_RULES}\n"
             f"{_SHORT_SIGNAL_TOKENS.format(npc_id=npc_id)}\n"
+            f"{_npc_behavior_prompt_block(npc_id)}\n"
             f"RAPPORT: {npc_rapport} | MOOD: {flags.get('npcMoods', {}).get(npc_id, 'neutral')} | "
             f"PLAYER NAME (rapport 2+ only): {flags.get('charName', 'the stranger')}"
         )
@@ -1250,6 +1319,15 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
     world_event_raw = _extract(r'WORLD_EVENT:([A-Za-z0-9_]+)', full_reply)
     reveal_lore_raw = _extract(r'REVEAL_LORE:([A-Za-z0-9_]+)', full_reply)
     rep_match = re.search(r'REPUTATION_CHANGE:([A-Za-z0-9_]+):([\+\-]?\d+)', full_reply, re.IGNORECASE)
+    nb_match  = re.search(r'NPC_BEHAVIOR:([A-Za-z_]+)(?::([A-Za-z0-9_]+))?', full_reply, re.IGNORECASE)
+
+    npc_behavior = None
+    if nb_match:
+        _verb   = nb_match.group(1).lower()
+        _target = (nb_match.group(2) or '').lower() or None
+        npc_behavior = _validate_npc_behavior(npc_id, _verb, _target)
+        if not npc_behavior:
+            print(f'[WARN] [{npc_id}] Dropped NPC_BEHAVIOR token: verb={_verb!r} target={_target!r}', flush=True)
 
     give_item = give_item_raw if give_item_raw in VALID_ITEMS else None
     if give_item_raw and not give_item:
@@ -1282,6 +1360,7 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
         r'WORLD_EVENT:[A-Za-z0-9_]+',
         r'REVEAL_LORE:[A-Za-z0-9_]+',
         r'REPUTATION_CHANGE:[A-Za-z0-9_]+:[\+\-]?\d+',
+        r'NPC_BEHAVIOR:[A-Za-z_]+(?::[A-Za-z0-9_]+)?',
     ]:
         dialogue = re.sub(_pat, '', dialogue, flags=re.IGNORECASE)
     dialogue = dialogue.strip()
@@ -1304,7 +1383,7 @@ def _interact_stream(session, session_id, npc_id, player_text=''):
                 print(f'[NPC-MEMORY] [{npc_id}] Facts extracted: {facts}', flush=True)
         threading.Thread(target=_do_extraction, daemon=True).start()
 
-    yield f'data: {json.dumps(_done(session_id, dialogue, quest_given, ended, options, give_item, unlock_area, world_event, reveal_lore, reputation_change))}\n\n'
+    yield f'data: {json.dumps(_done(session_id, dialogue, quest_given, ended, options, give_item, unlock_area, world_event, reveal_lore, reputation_change, npc_behavior))}\n\n'
 
 
 

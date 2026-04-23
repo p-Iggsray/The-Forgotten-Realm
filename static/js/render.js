@@ -81,6 +81,66 @@ function _drawDecoration(ctx, px, py, type, variant, TS) {
                                         ctx.fillRect(ox - u,  oy + u,   u*2,  u*2);
             ctx.fillStyle = P.M_MOSS;   ctx.fillRect(ox + u,  oy + u*3, u,    u*2);
         }
+    } else if (type === 'rock') {
+        // Small rock cluster: 3 irregular fillRects + 1-px shadow.
+        const ox = ix + Math.round(TS * 0.30), oy = iy + Math.round(TS * 0.50);
+        // Shadow base
+        ctx.fillStyle = P.D_VOID;
+        ctx.fillRect(ox - u, oy + u * 3, u * 7, u);
+        // Main rock
+        ctx.fillStyle = P.V_STONE_BASE;
+        ctx.fillRect(ox,       oy,         u * 5, u * 3);
+        // Smaller rock to the right
+        ctx.fillStyle = P.M_STONE;
+        ctx.fillRect(ox + u * 5, oy + u,   u * 2, u * 2);
+        // Tiny rock below-left
+        ctx.fillRect(ox - u,     oy + u * 2, u * 2, u);
+        // Top-left highlight (lit face)
+        ctx.fillStyle = P.V_STONE_HI;
+        ctx.fillRect(ox,       oy,         u * 5, 1);
+        ctx.fillRect(ox + u * 5, oy + u,   u * 2, 1);
+        // Bottom-right shadow
+        ctx.fillStyle = P.V_STONE_DARK;
+        ctx.fillRect(ox, oy + u * 3 - 1, u * 5, 1);
+        // Moss accent on darker variants
+        if (variant === 2) {
+            ctx.fillStyle = P.V_STONE_MOSS;
+            ctx.fillRect(ox + u, oy, u, 1);
+            ctx.fillRect(ox + u * 3, oy, 1, 1);
+        }
+
+    } else if (type === 'fence') {
+        // 2 horizontal rails (top + bottom) with 3 vertical posts.
+        // variant 0 = left endcap (tall post on left), 1 = middle, 2 = right endcap.
+        const y0 = iy + Math.round(TS * 0.40);
+        const railW = TS;
+        const railH = Math.max(1, u);
+        const postH = u * 4;
+        // Rails
+        ctx.fillStyle = P.S_DARK;
+        ctx.fillRect(ix,           y0,            railW, railH);            // upper rail
+        ctx.fillRect(ix,           y0 + u * 2,    railW, railH);            // lower rail
+        // Posts
+        ctx.fillStyle = P.D_BROWN;
+        const postTopY = y0 - u;
+        const postW = Math.max(1, Math.floor(u * 1.2));
+        // middle post (always present)
+        ctx.fillRect(ix + Math.floor(TS * 0.48), postTopY, postW, postH);
+        if (variant === 0) {
+            // tall left endcap
+            ctx.fillRect(ix + u,                    postTopY - u, postW, postH + u);
+        } else if (variant === 2) {
+            // tall right endcap
+            ctx.fillRect(ix + TS - u - postW,       postTopY - u, postW, postH + u);
+        } else {
+            // plain extra post for middle runs
+            ctx.fillRect(ix + Math.floor(TS * 0.18), postTopY, postW, postH);
+            ctx.fillRect(ix + Math.floor(TS * 0.78), postTopY, postW, postH);
+        }
+        // Highlight on tops of posts
+        ctx.fillStyle = P.M_CLAY;
+        ctx.fillRect(ix + Math.floor(TS * 0.48), postTopY, postW, 1);
+
     } else if (type === 'patch') {
         // Phase 5: full-tile tint overlay — subtle biome colour variation
         //  variant 0 = dark moss  (darker grass interior patches)
@@ -723,6 +783,47 @@ function _buildTileCache() {
         _tc[`wa${f}`] = can;
     }
 
+    // ── WELL  1 static variant (transparent bg — drawn over grass) ──
+    // Ripple highlights are drawn live each frame by drawWell() / SpriteRenderer.
+    {
+        const can = _mkTile(), c = can.getContext('2d');
+        const cx = Math.floor(T * 0.5), cy = Math.floor(T * 0.56);
+        const rOuter = Math.floor(T * 0.42);
+        const rInner = Math.floor(T * 0.30);
+        // Outer stone ring
+        _el(c, cx, cy,     rOuter,     Math.floor(rOuter * 0.82), P.V_STONE_DARK);
+        _el(c, cx, cy - 1, rOuter - 1, Math.floor(rOuter * 0.78), P.V_STONE_BASE);
+        _el(c, cx - 1, cy - 2, rOuter - 2, Math.floor(rOuter * 0.74), P.V_STONE_HI);
+        // Mossy fleck band near base
+        c.fillStyle = P.V_STONE_MOSS;
+        c.fillRect(cx - rOuter + 2, cy + Math.floor(rOuter * 0.50), rOuter - 4, 1);
+        c.fillRect(cx + 2,          cy + Math.floor(rOuter * 0.58), Math.floor(rOuter * 0.40), 1);
+        // Dark water mouth
+        _el(c, cx, cy - 1, rInner,     Math.floor(rInner * 0.82), P.V_WATER_DEEP);
+        _el(c, cx, cy - 2, rInner - 1, Math.floor(rInner * 0.78), P.V_WATER_MID);
+        // Inner rim shadow
+        c.fillStyle = P.D_VOID;
+        c.fillRect(cx - rInner + 1, cy - Math.floor(rInner * 0.82) + 1, (rInner - 1) * 2, 1);
+        // Wooden crossbeam + supports + rope
+        const beamY = cy - Math.floor(T * 0.30);
+        const beamW = Math.floor(rOuter * 1.9);
+        const beamH = Math.max(2, Math.floor(T * 0.06));
+        c.fillStyle = P.D_BROWN;
+        c.fillRect(cx - Math.floor(beamW / 2), beamY, beamW, beamH);
+        c.fillStyle = P.M_CLAY;
+        c.fillRect(cx - Math.floor(beamW / 2), beamY, beamW, 1);
+        const supH = Math.max(3, Math.floor(T * 0.18));
+        c.fillStyle = P.D_BROWN;
+        c.fillRect(cx - Math.floor(rOuter * 0.70),     beamY + beamH, 2, supH);
+        c.fillRect(cx + Math.floor(rOuter * 0.70) - 2, beamY + beamH, 2, supH);
+        c.fillStyle = P.M_CLAY;
+        c.fillRect(cx - Math.floor(rOuter * 0.70),     beamY + beamH, 1, supH);
+        c.fillRect(cx + Math.floor(rOuter * 0.70) - 2, beamY + beamH, 1, supH);
+        c.fillStyle = P.S_DARK;
+        c.fillRect(cx, beamY + beamH, 1, Math.floor(T * 0.20));
+        _tc['well0'] = can;
+    }
+
     // ── TORCH  2 animation frames (transparent bg) ───────────
     // Frame 'ta' = tall narrow flame  |  Frame 'tb' = wide squat flame
     // Wall background is drawn separately by drawTorch() before compositing.
@@ -1027,17 +1128,35 @@ function rebuildBgCanvas() {
 }
 
 // Draw only the animated tiles directly onto the main ctx each frame.
+// Also applies a subtle sway overlay to boundary grass tiles (outer ring) so
+// the village edge feels like it's breathing in the wind.
 function drawAnimatedTiles() {
     ensureTileCache();
     const stx = Math.max(0, Math.floor(cam.x / TS));
     const sty = Math.max(0, Math.floor(cam.y / TS));
     const etx = Math.min(currentMap.w - 1, Math.ceil((cam.x + cW) / TS));
     const ety = Math.min(currentMap.h - 1, Math.ceil((cam.y + cH) / TS));
+    const mapW = currentMap.w, mapH = currentMap.h;
+    const isOutdoor = !currentMap.dark && !currentMap.returnMap;
+    const swayAmp = Game.GRASS_SWAY_AMPLITUDE;
+    const swayHz  = Game.GRASS_SWAY_SPEED;
     for (let ty = sty; ty <= ety; ty++) {
         for (let tx = stx; tx <= etx; tx++) {
             const tile = currentMap.tiles[ty][tx];
-            if (!ANIMATED_TILES.has(tile)) continue;
-            drawTile(tile, tx * TS - cam.x, ty * TS - cam.y, tx, ty);
+            if (ANIMATED_TILES.has(tile)) {
+                drawTile(tile, tx * TS - cam.x, ty * TS - cam.y, tx, ty);
+                continue;
+            }
+            // Boundary grass sway — only the outermost ring, outdoor maps only
+            if (isOutdoor && tile === TILE.GRASS &&
+                (tx === 0 || ty === 0 || tx === mapW - 1 || ty === mapH - 1)) {
+                const px = tx * TS - cam.x;
+                const py = ty * TS - cam.y;
+                const off = Math.round(Game.fastSin(timeMs * swayHz + tx * 0.5 + ty * 0.3) * swayAmp);
+                ctx.fillStyle = PALETTE.V_GRASS_HI;
+                // 2-px tall sway strip at the top of the tile, shifted horizontally
+                ctx.fillRect(Math.floor(px) + off, Math.floor(py), TS, 2);
+            }
         }
     }
 }
@@ -1134,6 +1253,7 @@ function drawTile(tile, px, py, tx, ty) {
             break;
         }
         case TILE.WATER:    drawWater(px,py);       break;
+        case TILE.WELL:     drawWell(px,py,tx,ty);  break;
         case TILE.DOOR:     drawDoor(px,py,tx,ty);  break;
         case TILE.STAIRS:   drawStairs(px,py);       break;
         case TILE.STAIRSUP: drawStairsUp(px,py);    break;
@@ -1199,6 +1319,30 @@ function drawWater(px, py) {
             ctx.fillRect(lpx-1, lpy-Math.floor(lpR*.1)-1, 2, 2);
         }
     }
+}
+
+// Fallback well renderer (only reached if spriteRenderer is unavailable).
+// Static stone ring + wooden crossbeam cached once; live ripple per frame.
+function drawWell(px, py, tx, ty) {
+    const ipx = Math.floor(px), ipy = Math.floor(py);
+    const T = TS;
+    // Ground grass so the square tile blends with its neighbours
+    const gv = currentMap.variantMap
+        ? currentMap.variantMap[ty * currentMap.w + tx] & 7
+        : (tx*7+ty*13)&7;
+    ctx.drawImage(_tc[`g${gv}`], ipx, ipy, T+1, T+1);
+    if (_tc['well0']) ctx.drawImage(_tc['well0'], ipx, ipy, T+1, T+1);
+    // Live ripple highlight pixel
+    const cx = ipx + Math.floor(T * 0.5);
+    const cy = ipy + Math.floor(T * 0.56);
+    const r  = Math.floor(T * 0.22);
+    const phase = timeMs * Game.WELL_RIPPLE_SPEED + tx * 0.9 + ty * 1.3;
+    const dx = Math.round(Game.fastSin(phase)       * r * 0.35);
+    const dy = Math.round(Game.fastSin(phase * 1.7) * r * 0.12);
+    ctx.fillStyle = PALETTE.V_WATER_HI;
+    ctx.fillRect(cx + dx, cy + dy, 2, 1);
+    ctx.fillStyle = PALETTE.V_WATER_FOAM;
+    ctx.fillRect(cx + dx, cy + dy, 1, 1);
 }
 
 function drawDoor(px, py, tx, ty) {
@@ -2060,10 +2204,17 @@ function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, wal
     if (npcId) {
         const cfg = _NPC_CONFIGS[npcId];
         if (cfg) {
-            const frameIdx = Math.floor(timeMs / 500) % 6;
+            // Walk frame cycles off walkPhase when moving (matches player),
+            // idle cycle is time-derived so NPCs always read as alive.
+            const frameIdx = isMoving
+                ? Math.floor(Math.abs(walkPhase) * 1.27) % 6
+                : Math.floor(timeMs / 500) % 6;
             const frame = _buildNPCFrame(npcId, facing, frameIdx);
             if (frame) {
-                const idleBob = Math.round(Math.sin(t * 1.1 + cx * 0.031) * 1.4);
+                // When moving, swap the idle sway for a step-bob that reads as walking
+                const idleBob = isMoving
+                    ? Math.round(Math.sin(walkPhase * 2) * 1.6)
+                    : Math.round(Math.sin(t * 1.1 + cx * 0.031) * 1.4);
                 ctx.save();
                 if (ghost || cfg.ghost) {
                     ctx.globalAlpha = 0.55 + 0.15 * Math.sin(t * 2.2);
@@ -2090,6 +2241,44 @@ function drawCharacter(sx, sy, color, facing, name, isPlayer, isNear, ghost, wal
             }
         }
     }
+}
+
+// Renders a small behavior-state badge above an NPC sprite (follow/lead/arrived).
+// Called from the main render loop after drawCharacter so indicators sit above
+// the name label in the z-order.
+function drawNPCBehaviorIndicator(sx, sy, npc) {
+    if (!npc || !npc.behavior) return;
+    const cx = sx + TS / 2;
+    const topY = sy - 32;
+    ctx.save();
+    if (npc.behavior === 'follow') {
+        const a = Math.sin(timeMs * 0.003) * 0.25 + 0.55;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#ffc832';
+        ctx.beginPath();
+        ctx.arc(cx, topY, 3, 0, Math.PI * 2);
+        ctx.fill();
+    } else if (npc.behavior === 'lead') {
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#ffc832';
+        ctx.beginPath();
+        const f = npc.facing || 'down';
+        if (f === 'up') { ctx.moveTo(cx, topY - 4); ctx.lineTo(cx - 4, topY + 2); ctx.lineTo(cx + 4, topY + 2); }
+        else if (f === 'down') { ctx.moveTo(cx, topY + 4); ctx.lineTo(cx - 4, topY - 2); ctx.lineTo(cx + 4, topY - 2); }
+        else if (f === 'left') { ctx.moveTo(cx - 4, topY); ctx.lineTo(cx + 2, topY - 4); ctx.lineTo(cx + 2, topY + 4); }
+        else { ctx.moveTo(cx + 4, topY); ctx.lineTo(cx - 2, topY - 4); ctx.lineTo(cx - 2, topY + 4); }
+        ctx.closePath();
+        ctx.fill();
+    } else if (npc.behavior === 'arrived') {
+        const a = Math.sin(timeMs * 0.005) * 0.35 + 0.6;
+        ctx.globalAlpha = a;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${Math.max(14, TS * 0.32)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('!', cx, topY);
+    }
+    ctx.restore();
 }
 
 function drawWeapon(cx, cy, r, facing) {
@@ -2708,9 +2897,16 @@ function render() {
         if (sx>-TS&&sx<cW+TS&&sy>-TS&&sy<cH+TS) drawItem(item,sx,sy);
     }
     for (const npc of currentMap.npcs) {
-        const sx=Math.round(npc.x*TS-cam.x), sy=Math.round(npc.y*TS-cam.y);
-        if (sx>-TS*2&&sx<cW+TS&&sy>-TS*2&&sy<cH+TS)
-            drawCharacter(sx,sy,npc.color,'down',npc.name,false,isAdjacent(npc.x,npc.y),npc.ghost,0,false,npc.id);
+        const rx = npc.renderX ?? (npc.x * TS);
+        const ry = npc.renderY ?? (npc.y * TS);
+        const sx = Math.round(rx - cam.x), sy = Math.round(ry - cam.y);
+        if (sx>-TS*2&&sx<cW+TS&&sy>-TS*2&&sy<cH+TS) {
+            drawCharacter(sx, sy, npc.color,
+                npc.facing || 'down',
+                npc.name, false, isAdjacent(npc.x, npc.y), npc.ghost,
+                npc.walkPhase || 0, !!npc.isMoving, npc.id);
+            drawNPCBehaviorIndicator(sx, sy, npc);
+        }
     }
     drawAmbientBubbles();
     if (currentMap.enemies) {

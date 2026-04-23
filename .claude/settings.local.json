@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \" const fs = require\\('fs'\\); const game = fs.readFileSync\\('/c/Users/prigg/OneDrive/Documents/GitHub/The-Forgotten-Realm/static/js/game.js', 'utf8'\\); // Extract TILE constants const tileMatch = game.match\\(/const TILE[^}]+\\\\}/s\\); console.log\\('=== TILE CONSTANTS ==='\\); console.log\\(tileMatch ? tileMatch[0] : 'NOT FOUND'\\); \")"
+    ]
+  }
+}

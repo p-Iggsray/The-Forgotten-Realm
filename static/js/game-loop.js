@@ -55,6 +55,7 @@ function loop(ts) {
         updatePlayerAnim(dt);
         updateCamera();
         updateEnemies(dt);
+        updateNPCs(dt);
         updateAmbient(dt);
         updateDiscovery();
         battleSystem.update(dt);

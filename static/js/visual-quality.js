@@ -503,7 +503,13 @@ const VQ = (() => {
 
         const t = Game.timeMs * 0.001;
         _ensureVqDisc();
-        const dr = _vqTorchDisc.width >> 1;
+        // Village/outdoor torches cast a wider pool than the disc's native size —
+        // outdoors the darkness is less total, so the glow should read as more
+        // atmospheric warmth than literal illumination.
+        const mult = (!Game.currentMap.returnMap) ? (Game.VILLAGE_TORCH_LIGHT_RADIUS_MULTIPLIER || 1) : 1;
+        const dw   = Math.round(_vqTorchDisc.width  * mult);
+        const dh   = Math.round(_vqTorchDisc.height * mult);
+        const dr   = dw >> 1;
         Game.ctx.save();
         Game.ctx.globalCompositeOperation = 'screen';
 
@@ -515,7 +521,7 @@ const VQ = (() => {
                 // Flicker via globalAlpha — disc pre-rendered at peak alpha=1
                 const fl = C.torchAlpha + 0.028 * Math.sin(t * 10.5 + tx * 2.7 + ty * 1.3);
                 Game.ctx.globalAlpha = fl * 2.8;
-                Game.ctx.drawImage(_vqTorchDisc, lx - dr, ly - dr);
+                Game.ctx.drawImage(_vqTorchDisc, lx - dr, ly - (dh >> 1), dw, dh);
             }
         }
         Game.ctx.globalAlpha = 1;

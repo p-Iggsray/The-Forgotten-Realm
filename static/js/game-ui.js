@@ -375,6 +375,19 @@ function _applySignalTokens(data, npc) {
         const cur = gs.reputation[npc_id] ?? 0;
         gs.reputation[npc_id] = Math.max(0, Math.min(3, cur + delta));
     }
+    if (data.npc_behavior && typeof Game.applyNPCBehavior === 'function') {
+        const { behavior, target } = data.npc_behavior;
+        // Resolve against the live NPC on the current map so we mutate the
+        // same object the update loop iterates, not a stale copy.
+        const live = Game.currentMap?.npcs?.find(n => n.id === npc.id) || npc;
+        Game.applyNPCBehavior(live, behavior, target || null);
+        const dest = target && Game.NPC_DESTINATIONS?.[target];
+        if (behavior === 'lead' && dest) {
+            showNotification(`${npc.name} is leading you to ${dest.label}.`, 'info');
+        } else if (behavior === 'follow') {
+            showNotification(`${npc.name} is following you.`, 'info');
+        }
+    }
 }
 
 async function callInteract(npc, playerText, onChunk = null) {

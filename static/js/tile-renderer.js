@@ -81,6 +81,7 @@ const SHEET_LAYOUT = Object.freeze({
         SIGN:     { r: 10, v: 3 },  // 0=wall 1=floor 2=post
         TORCH:    { r: 11, v: 2 },  // frames 0-1 (animation, 4–6-tick interval)
         CEILING:  { r: 12, v: 1 },  // overhead beam (top row of interior)
+        WELL:     { r: 13, v: 1 },  // stone well (static sprite; ripple drawn live)
     }),
 
     // Returns the {sx, sy, sw, sh} source rect for drawImage() from the atlas.
@@ -887,6 +888,63 @@ function _drawRefTorch(c, T, frame) {
 }
 
 
+// ── WELL ─────────────────────────────────────────────────────────────
+// Static stone ring with wooden crossbeam; ripple and highlights are
+// drawn live per-frame by the caller (over this base sprite).
+function _drawRefWell(c, T, _variant) {
+    const P = Game.PALETTE;
+    const cx = Math.floor(T * 0.5), cy = Math.floor(T * 0.56);
+    const rOuter = Math.floor(T * 0.42);
+    const rInner = Math.floor(T * 0.30);
+
+    // Ground shadow oval (dithered, south of the well base)
+    _ditherBayer(c,
+        cx - rOuter - 2, cy + Math.floor(T * 0.24),
+        (rOuter + 2) * 2, Math.max(2, Math.floor(T * 0.10)),
+        P.D_VOID, P.V_GRASS_DARK, 0.45);
+
+    // Outer stone ring — darker base
+    _ellipse(c, cx, cy, rOuter, Math.floor(rOuter * 0.82), P.V_STONE_DARK);
+    // Mid stone ring — lit face
+    _ellipse(c, cx, cy - 1, rOuter - 1, Math.floor(rOuter * 0.78), P.V_STONE_BASE);
+    // Rim highlight (top-left bevel)
+    _ellipse(c, cx - 1, cy - 2, rOuter - 2, Math.floor(rOuter * 0.74), P.V_STONE_HI);
+    // Mossy fleck band near base
+    c.fillStyle = P.V_STONE_MOSS;
+    c.fillRect(cx - rOuter + 2, cy + Math.floor(rOuter * 0.50), rOuter - 4, 1);
+    c.fillRect(cx + 2,          cy + Math.floor(rOuter * 0.58), Math.floor(rOuter * 0.40), 1);
+
+    // Dark water inside — opens the mouth of the well
+    _ellipse(c, cx, cy - 1, rInner, Math.floor(rInner * 0.82), P.V_WATER_DEEP);
+    _ellipse(c, cx, cy - 2, rInner - 1, Math.floor(rInner * 0.78), P.V_WATER_MID);
+
+    // Inner rim shadow — just inside the stone mouth
+    c.fillStyle = P.D_VOID;
+    c.fillRect(cx - rInner + 1, cy - Math.floor(rInner * 0.82) + 1, (rInner - 1) * 2, 1);
+
+    // Wooden crossbeam across the top of the well
+    const beamY = cy - Math.floor(T * 0.30);
+    const beamW = Math.floor(rOuter * 1.9);
+    const beamH = Math.max(2, Math.floor(T * 0.06));
+    c.fillStyle = P.D_BROWN;
+    c.fillRect(cx - Math.floor(beamW / 2), beamY, beamW, beamH);
+    c.fillStyle = P.M_CLAY;
+    c.fillRect(cx - Math.floor(beamW / 2), beamY, beamW, 1);  // lit top edge
+    // Two vertical supports down to the rim
+    const supH = Math.max(3, Math.floor(T * 0.18));
+    c.fillStyle = P.D_BROWN;
+    c.fillRect(cx - Math.floor(rOuter * 0.70), beamY + beamH, 2, supH);
+    c.fillRect(cx + Math.floor(rOuter * 0.70) - 2, beamY + beamH, 2, supH);
+    c.fillStyle = P.M_CLAY;
+    c.fillRect(cx - Math.floor(rOuter * 0.70), beamY + beamH, 1, supH);
+    c.fillRect(cx + Math.floor(rOuter * 0.70) - 2, beamY + beamH, 1, supH);
+
+    // Hanging rope from beam centre
+    c.fillStyle = P.S_DARK;
+    c.fillRect(cx, beamY + beamH, 1, Math.floor(T * 0.20));
+}
+
+
 // ── TILE RENDERER CLASS ──────────────────────────────────────────────
 // Loads PNG sprite sheets and caches tiles at the current TS.
 // Falls back to enhanced procedural tiles when no sheet is loaded.
@@ -986,6 +1044,7 @@ class TileRenderer {
             case 'DOOR':        _drawRefDoor(ctx, ts, variant);               break;
             case 'STAIRS':      _drawRefStairs(ctx, ts, variant === 1);       break;
             case 'TORCH':       _drawRefTorch(ctx, ts, variant);              break;
+            case 'WELL':        _drawRefWell(ctx, ts, variant);               break;
             default: {
                 // Unknown row — debug checkerboard so missing tiles are obvious
                 _ditherCheck(ctx, 0, 0, ts, ts, '#f0f', '#000', 0);

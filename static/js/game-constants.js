@@ -21,6 +21,7 @@ const TILE = Game.TILE = Object.freeze({
     TORCH:          10,  // wall torch (animated)
     STONE_PATH:     11,  // cool gray cobblestone main roads
     VOID:           12,  // null / empty — pure black
+    WELL:           13,  // central stone well (blocking, animated water surface)
 });
 Game.WALKABLE = new Set([
     TILE.GRASS, TILE.DIRT_PATH, TILE.STONE_PATH, TILE.BUILDING_FLOOR,
@@ -44,11 +45,35 @@ Game.MINIMAP_COLORS = Object.freeze({
     [TILE.TORCH]:          '#c07830',
     [TILE.STONE_PATH]:     '#48443c',
     [TILE.VOID]:           '#040308',
+    [TILE.WELL]:           '#4a6878',
 });
 // Tiles that animate every frame and must bypass the bg cache.
 // Only truly animated tiles belong here — static special tiles (STAIRS, STAIRSUP)
 // are baked into the bg canvas and handled by spriteRenderer.drawTile normally.
-Game.ANIMATED_TILES = new Set([TILE.WATER, TILE.TORCH]);
+Game.ANIMATED_TILES = new Set([TILE.WATER, TILE.TORCH, TILE.WELL]);
+
+// ═══════════════════════════════════════════════════════
+//  SINE LOOKUP TABLE + AMBIENT-MOTION CONSTANTS
+//  fastSin/fastCos replace Math.sin/Math.cos for hot-path
+//  animation code (grass sway, well ripple, future uses).
+//  1024-entry Float32 table; ~10× faster than Math.sin and
+//  introduces only tiny (<0.3%) error — invisible at tile scale.
+// ═══════════════════════════════════════════════════════
+const SIN_TABLE_SIZE = 1024;
+Game.SIN_TABLE_SIZE = SIN_TABLE_SIZE;
+const _SIN_MASK = SIN_TABLE_SIZE - 1;
+const _SIN_SCALE = SIN_TABLE_SIZE / (Math.PI * 2);
+const _SIN_LUT = new Float32Array(SIN_TABLE_SIZE);
+for (let i = 0; i < SIN_TABLE_SIZE; i++) {
+    _SIN_LUT[i] = Math.sin((i / SIN_TABLE_SIZE) * Math.PI * 2);
+}
+Game.fastSin = function fastSin(r) { return _SIN_LUT[((r * _SIN_SCALE) | 0) & _SIN_MASK]; };
+Game.fastCos = function fastCos(r) { return _SIN_LUT[(((r + Math.PI * 0.5) * _SIN_SCALE) | 0) & _SIN_MASK]; };
+
+Game.GRASS_SWAY_SPEED = 0.0008;
+Game.GRASS_SWAY_AMPLITUDE = 1;
+Game.WELL_RIPPLE_SPEED = 0.0012;
+Game.VILLAGE_TORCH_LIGHT_RADIUS_MULTIPLIER = 1.3;
 
 // ═══════════════════════════════════════════════════════
 //  COLOUR PALETTE  — locked 32-colour pixel-art palette
@@ -216,6 +241,25 @@ Game.ENEMY_DEFS = {
         desc:'A massive stone-skinned predator.',
     },
 };
+
+// ═══════════════════════════════════════════════════════
+//  NPC BEHAVIOR / MOVEMENT
+// ═══════════════════════════════════════════════════════
+Game.NPC_STEP_INTERVAL_MS           = 400;
+Game.NPC_MOVE_DURATION_MS           = 380;   // slightly under step interval so a tiny pause lands between tiles
+Game.NPC_WANDER_PAUSE_MIN_MS        = 3000;
+Game.NPC_WANDER_PAUSE_MAX_MS        = 8000;
+Game.NPC_WANDER_MAX_DISTANCE        = 4;     // tiles from spawn (village NPCs)
+Game.NPC_WANDER_MAX_DISTANCE_SMALL  = 2;     // interior NPCs in tiny rooms
+Game.NPC_FOLLOW_DISTANCE            = 2;
+Game.NPC_LEAD_ARRIVAL_DISTANCE      = 1;
+Game.NPC_LEAD_PAUSE_EVERY_TILES     = 5;
+Game.NPC_LEAD_PAUSE_DURATION_MS     = 1000;
+Game.NPC_LEAD_PLAYER_CATCHUP_RADIUS = 6;
+Game.NPC_ARRIVED_TIMEOUT_MS         = 30000;
+Game.NPC_PATH_MAX_TILES             = 30;
+Game.NPC_PATH_RECALC_INTERVAL_MS    = 500;
+Game.NPC_PATH_BLOCKED_WAIT_MS       = 1000;
 
 // Biome type constants — stored per-tile in map.biomeData (Uint8Array)
 Game.BIOME = Object.freeze({

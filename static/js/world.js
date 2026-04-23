@@ -36,4 +36,48 @@
 
     // currentMap is null until game.js initializes MAPS and calls changeMap / startGame.
     Game.currentMap = null;
+
+    // ═══════════════════════════════════════════════════════
+    //  CHOKEPOINT VALIDATOR
+    //  isWalkableAfterBlock(map, bx, by): returns true if every walkable
+    //  tile currently reachable from a seed point remains reachable when
+    //  (bx, by) is treated as blocked. Used at authoring time for new
+    //  prop placements (well, rocks, fences) to guarantee the map stays
+    //  fully connected. Never called from the render loop.
+    // ═══════════════════════════════════════════════════════
+    Game.isWalkableAfterBlock = function isWalkableAfterBlock(map, bx, by) {
+        const W = map.w, H = map.h, tiles = map.tiles;
+        const WALKABLE = Game.WALKABLE;
+        // Find any walkable seed tile that is not (bx, by).
+        let seedX = -1, seedY = -1, total = 0;
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                if (!WALKABLE.has(tiles[y][x])) continue;
+                total++;
+                if (seedX < 0 && !(x === bx && y === by)) { seedX = x; seedY = y; }
+            }
+        }
+        if (seedX < 0) return false;
+        const expected = total - (WALKABLE.has(tiles[by]?.[bx]) ? 1 : 0);
+        // BFS
+        const visited = new Uint8Array(W * H);
+        const qx = new Int16Array(W * H), qy = new Int16Array(W * H);
+        let head = 0, tail = 0, reached = 0;
+        qx[tail] = seedX; qy[tail] = seedY; tail++;
+        visited[seedY * W + seedX] = 1;
+        while (head < tail) {
+            const cx = qx[head], cy = qy[head]; head++;
+            reached++;
+            const neighbours = [[cx, cy-1],[cx+1, cy],[cx, cy+1],[cx-1, cy]];
+            for (const [nx, ny] of neighbours) {
+                if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+                if (nx === bx && ny === by) continue;
+                if (visited[ny * W + nx]) continue;
+                if (!WALKABLE.has(tiles[ny][nx])) continue;
+                visited[ny * W + nx] = 1;
+                qx[tail] = nx; qy[tail] = ny; tail++;
+            }
+        }
+        return reached === expected;
+    };
 })();
